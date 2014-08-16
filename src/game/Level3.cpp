@@ -3849,6 +3849,29 @@ bool ChatHandler::HandleNpcInfoCommand(char* /*args*/)
     return true;
 }
 
+bool ChatHandler::HandleNpcStatsCommand(char* /*args*/)
+{
+    Creature* target = getSelectedCreature();
+
+    if (!target)
+    {
+        SendSysMessage(LANG_SELECT_CREATURE);
+        SetSentErrorMessage(true);
+        return false;
+    }
+
+    PSendSysMessage("Health> %u", (uint32) target->GetModifierValue(UNIT_MOD_HEALTH, BASE_VALUE));
+    if (target->GetPowerType() == POWER_MANA)
+        PSendSysMessage("Mana> %u", (uint32) target->GetModifierValue(UNIT_MOD_MANA, BASE_VALUE));
+
+    PSendSysMessage("Base Melee damage > ( %.2f to %.2f )", target->GetWeaponDamageRange(BASE_ATTACK, MINDAMAGE), target->GetWeaponDamageRange(BASE_ATTACK, MAXDAMAGE));
+    PSendSysMessage("Base Ranged damage > ( %.2f to %.2f )", target->GetFloatValue(UNIT_FIELD_MINRANGEDDAMAGE), target->GetFloatValue(UNIT_FIELD_MAXRANGEDDAMAGE));
+    PSendSysMessage("Base armor > %u", (uint32) target->GetModifierValue(UNIT_MOD_ARMOR, BASE_VALUE));
+    PSendSysMessage("Base melee AP > %u", (uint32) target->GetModifierValue(UNIT_MOD_ATTACK_POWER, BASE_VALUE));
+    PSendSysMessage("Base ranged AP > %u", (uint32) target->GetModifierValue(UNIT_MOD_ATTACK_POWER_RANGED, BASE_VALUE));
+    return true;
+}
+
 // play npc emote
 bool ChatHandler::HandleNpcPlayEmoteCommand(char* args)
 {
