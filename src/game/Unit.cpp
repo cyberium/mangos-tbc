@@ -9909,7 +9909,7 @@ Unit* Unit::TakePossessOf(SpellEntry const* spellEntry, SummonPropertiesEntry co
 
     TemporarySummon* pCreature = new TemporarySummon(GetObjectGuid());
 
-    CreatureCreatePos pos(GetMap(), x, y, z, ang, GetPhaseMask());
+    CreatureCreatePos pos(GetMap(), x, y, z, ang);
 
     if (x == 0.0f && y == 0.0f && z == 0.0f)
         pos = CreatureCreatePos(this, GetOrientation(), CONTACT_DISTANCE, ang);
@@ -9929,13 +9929,11 @@ Unit* Unit::TakePossessOf(SpellEntry const* spellEntry, SummonPropertiesEntry co
     pCreature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED);  // set flag for client that mean this unit is controlled by a player
     pCreature->addUnitState(UNIT_STAT_CONTROLLED);                      // also set internal unit state flag
     pCreature->SelectLevel(getLevel());                                 // set level to same level than summoner TODO:: not sure its always the case...
-    pCreature->SetLinkedToOwnerAura(TEMPSUMMON_LINKED_AURA_OWNER_CHECK | TEMPSUMMON_LINKED_AURA_REMOVE_OWNER); // set what to do if linked aura is removed or the creature is dead.
     pCreature->SetWalk(IsWalking(), true);                              // sync the walking state with the summoner
 
                                                                         // important before adding to the map!
     SetCharmGuid(pCreature->GetObjectGuid());                           // save guid of charmed creature
 
-    pCreature->SetSummonProperties(TEMPSUMMON_CORPSE_TIMED_DESPAWN, 5000); // set 5s corpse decay
     GetMap()->Add(static_cast<Creature*>(pCreature));                   // create the creature in the client
     pCreature->AIM_Initialize();                                        // even if this will be replaced it need to be initialized to take care of spawn spells
 
