@@ -3634,6 +3634,9 @@ void Spell::EffectSummonType(SpellEffectIndex eff_idx)
     // Expected Amount: TODO - there are quite some exceptions (like totems, engineering dragonlings..)
     uint32 amount = damage > 0 ? damage : 1;
 
+    if (summon_prop->Group == SUMMON_PROP_GROUP_CONTROLLABLE)
+        amount = 1;
+
     // Expected Level
     Unit* petInvoker = responsibleCaster ? responsibleCaster : m_caster;
     uint32 level = petInvoker->getLevel();
