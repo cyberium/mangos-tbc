@@ -2267,12 +2267,12 @@ void Spell::EffectDummy(SpellEffectIndex eff_idx)
                         ihit->effectMask &= ~(1 << 1);
 
                     // not empty (checked), copy
-                    Unit::AttackerSet attackers = friendTarget->getAttackers();
+                    AttackerSet attackers = friendTarget->getAttackers();
 
                     // selected from list 3
                     for (uint32 i = 0; i < std::min(size_t(3), attackers.size()); ++i)
                     {
-                        Unit::AttackerSet::iterator aItr = attackers.begin();
+                        AttackerSet::iterator aItr = attackers.begin();
                         std::advance(aItr, rand() % attackers.size());
                         AddUnitTarget((*aItr), EFFECT_INDEX_1);
                         attackers.erase(aItr);
@@ -4278,7 +4278,7 @@ bool Spell::DoSummonGuardian(CreatureSummonPositions& list, SummonPropertiesEntr
 
             if (spawnCreature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PASSIVE))
                 charmInfo->SetReactState(REACT_PASSIVE);
-            else if ((cInfo->ExtraFlags & CREATURE_EXTRA_FLAG_NO_MELEE))
+            else if (cInfo->ExtraFlags & CREATURE_EXTRA_FLAG_NO_MELEE)
                 charmInfo->SetReactState(REACT_DEFENSIVE);
             else
                 charmInfo->SetReactState(REACT_AGGRESSIVE);
