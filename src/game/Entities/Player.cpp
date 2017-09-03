@@ -20729,7 +20729,7 @@ AreaLockStatus Player::GetAreaTriggerLockStatus(AreaTrigger const* at, uint32& m
     Map* map = sMapMgr.FindMap(at->target_mapId, state ? state->GetInstanceId() : 0);
 
     // check if this account try to abuse reseting instance 
-    if (mapEntry->IsDungeon() && ((map && map->GetDifficulty() == DUNGEON_DIFFICULTY_NORMAL) || (mapEntry->IsDungeon() && GetDifficulty() == DUNGEON_DIFFICULTY_NORMAL)))
+    if (mapEntry->IsDungeon() && ((map && map->GetDifficulty() == DUNGEON_DIFFICULTY_NORMAL) || (GetDifficulty() == DUNGEON_DIFFICULTY_NORMAL)))
     {
         if (!CanEnterNewInstance(state ? state->GetInstanceId() : 0))
             return AREA_LOCKSTATUS_TOO_MANY_INSTANCE;
@@ -21078,7 +21078,7 @@ void Player::_SaveNewInstanceIdTimer()
     }
 }
 
-// Clears timers that expired and clears entries for which instance was destroyed
+// Clears timers that expired
 void Player::UpdateNewInstanceIdTimers(TimePoint const& now)
 {
     for (auto iter = m_enteredInstances.begin(); iter != m_enteredInstances.end();)
