@@ -98,7 +98,7 @@ World::World() : mail_timer(0), mail_timer_expires(0), m_NextDailyQuestReset(0),
     m_allowMovement = true;
     m_ShutdownMask = 0;
     m_ShutdownTimer = 0;
-    m_gameTime = time(nullptr);
+    m_gameTime = GlobalTimer::GetSystemTimeT();
     m_startTime = m_gameTime;
     m_maxActiveSessionCount = 0;
     m_maxQueuedSessionCount = 0;
@@ -837,7 +837,7 @@ void World::LoadConfigSettings(bool reload)
 void World::SetInitialWorldSettings()
 {
     ///- Initialize the random number generator
-    srand((unsigned int)time(nullptr));
+    srand((unsigned int)GlobalTimer::GetSystemTimeT());
 
     ///- Time server startup
     uint32 uStartTime = WorldTimer::getMSTime();
@@ -1235,7 +1235,7 @@ void World::SetInitialWorldSettings()
 
     ///- Initialize game time and timers
     sLog.outString("Initialize game time and timers");
-    m_gameTime = time(nullptr);
+    m_gameTime = GlobalTimer::GetSystemTimeT();
     m_startTime = m_gameTime;
 
     tm local;
@@ -1756,7 +1756,7 @@ bool World::RemoveBanAccount(BanMode mode, std::string nameOrIP)
 void World::_UpdateGameTime()
 {
     ///- update the time
-    time_t thisTime = time(nullptr);
+    time_t thisTime = GlobalTimer::GetSystemTimeT();
     uint32 elapsed = uint32(thisTime - m_gameTime);
     m_gameTime = thisTime;
 
@@ -1938,12 +1938,12 @@ void World::InitDailyQuestResetTime()
 {
     QueryResult* result = CharacterDatabase.Query("SELECT NextDailyQuestResetTime FROM saved_variables");
     if (!result)
-        m_NextDailyQuestReset = time_t(time(nullptr));         // game time not yet init
+        m_NextDailyQuestReset = time_t(GlobalTimer::GetSystemTimeT());         // game time not yet init
     else
         m_NextDailyQuestReset = time_t((*result)[0].GetUInt64());
 
     // generate time by config
-    time_t curTime = time(nullptr);
+    time_t curTime = GlobalTimer::GetSystemTimeT();
     tm localTm = *localtime(&curTime);
     localTm.tm_hour = getConfig(CONFIG_UINT32_QUEST_DAILY_RESET_HOUR);
     localTm.tm_min  = 0;
@@ -1969,12 +1969,12 @@ void World::InitWeeklyQuestResetTime()
 {
     QueryResult* result = CharacterDatabase.Query("SELECT NextWeeklyQuestResetTime FROM saved_variables");
     if (!result)
-        m_NextWeeklyQuestReset = time_t(time(nullptr));        // game time not yet init
+        m_NextWeeklyQuestReset = time_t(GlobalTimer::GetSystemTimeT());        // game time not yet init
     else
         m_NextWeeklyQuestReset = time_t((*result)[0].GetUInt64());
 
     // generate time by config
-    time_t curTime = time(nullptr);
+    time_t curTime = GlobalTimer::GetSystemTimeT();
     tm localTm = *localtime(&curTime);
 
     int week_day_offset = localTm.tm_wday - int(getConfig(CONFIG_UINT32_QUEST_WEEKLY_RESET_WEEK_DAY));
@@ -2001,7 +2001,7 @@ void World::InitWeeklyQuestResetTime()
 
 void World::SetMonthlyQuestResetTime(bool initialize)
 {
-    time_t currentTime = time(nullptr);
+    time_t currentTime = GlobalTimer::GetSystemTimeT();
     bool insert = false;
     if (initialize)
     {
@@ -2009,7 +2009,7 @@ void World::SetMonthlyQuestResetTime(bool initialize)
 
         if (!result)
         {
-            m_NextMonthlyQuestReset = time_t(time(nullptr));
+            m_NextMonthlyQuestReset = time_t(GlobalTimer::GetSystemTimeT());
             insert = true;
         }
         else

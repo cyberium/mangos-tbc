@@ -252,7 +252,7 @@ ObjectAccessor::ConvertCorpseForPlayer(ObjectGuid player_guid, bool insignia)
 
 void ObjectAccessor::RemoveOldCorpses()
 {
-    time_t now = time(nullptr);
+    time_t now = GlobalTimer::GetSystemTimeT();
     Player2CorpsesMapType::iterator next;
     for (Player2CorpsesMapType::iterator itr = i_player2corpse.begin(); itr != i_player2corpse.end(); itr = next)
     {

@@ -54,7 +54,7 @@ void WorldSession::HandleDuelAcceptedOpcode(WorldPacket& recvPacket)
     DEBUG_FILTER_LOG(LOG_FILTER_COMBAT, "Player 1 is: %u (%s)", self->GetGUIDLow(), self->GetName());
     DEBUG_FILTER_LOG(LOG_FILTER_COMBAT, "Player 2 is: %u (%s)", opponent->GetGUIDLow(), opponent->GetName());
 
-    time_t now = time(nullptr);
+    time_t now = self->GetMap()->GetSyncTimeT();
     self->duel->startTimer = now;
     opponent->duel->startTimer = now;
 

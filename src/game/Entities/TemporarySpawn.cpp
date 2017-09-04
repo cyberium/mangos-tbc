@@ -25,34 +25,35 @@ TemporarySpawn::TemporarySpawn(ObjectGuid summoner) :
 {
 }
 
-void TemporarySpawn::Update(uint32 update_diff,  uint32 diff)
+void TemporarySpawn::Update()
 {
+    uint32 updateDiff = GetMap()->GetSyncUpdateDiff();
     switch (m_type)
     {
         case TEMPSPAWN_MANUAL_DESPAWN:
             break;
         case TEMPSPAWN_TIMED_DESPAWN:
         {
-            if (m_timer <= update_diff)
+            if (m_timer <= updateDiff)
             {
                 UnSummon();
                 return;
             }
 
-            m_timer -= update_diff;
+            m_timer -= updateDiff;
             break;
         }
         case TEMPSPAWN_TIMED_OOC_DESPAWN:
         {
             if (!isInCombat())
             {
-                if (m_timer <= update_diff)
+                if (m_timer <= updateDiff)
                 {
                     UnSummon();
                     return;
                 }
 
-                m_timer -= update_diff;
+                m_timer -= updateDiff;
             }
             else if (m_timer != m_lifetime)
                 m_timer = m_lifetime;
@@ -64,13 +65,13 @@ void TemporarySpawn::Update(uint32 update_diff,  uint32 diff)
         {
             if (IsCorpse())
             {
-                if (m_timer <= update_diff)
+                if (m_timer <= updateDiff)
                 {
                     UnSummon();
                     return;
                 }
 
-                m_timer -= update_diff;
+                m_timer -= updateDiff;
             }
             if (IsDespawned())
             {
@@ -110,13 +111,13 @@ void TemporarySpawn::Update(uint32 update_diff,  uint32 diff)
 
             if (!isInCombat())
             {
-                if (m_timer <= update_diff)
+                if (m_timer <= updateDiff)
                 {
                     UnSummon();
                     return;
                 }
                 else
-                    m_timer -= update_diff;
+                    m_timer -= updateDiff;
             }
             else if (m_timer != m_lifetime)
                 m_timer = m_lifetime;
@@ -133,13 +134,13 @@ void TemporarySpawn::Update(uint32 update_diff,  uint32 diff)
 
             if (!isInCombat() && isAlive())
             {
-                if (m_timer <= update_diff)
+                if (m_timer <= updateDiff)
                 {
                     UnSummon();
                     return;
                 }
                 else
-                    m_timer -= update_diff;
+                    m_timer -= updateDiff;
             }
             else if (m_timer != m_lifetime)
                 m_timer = m_lifetime;
@@ -153,12 +154,12 @@ void TemporarySpawn::Update(uint32 update_diff,  uint32 diff)
                 UnSummon();
                 return;
             }
-            if (m_timer <= update_diff)
+            if (m_timer <= updateDiff)
             {
                 UnSummon();
                 return;
             }
-            m_timer -= update_diff;
+            m_timer -= updateDiff;
             break;
         }
         case TEMPSPAWN_TIMED_OR_DEAD_DESPAWN:
@@ -169,12 +170,12 @@ void TemporarySpawn::Update(uint32 update_diff,  uint32 diff)
                 UnSummon();
                 return;
             }
-            if (m_timer <= update_diff)
+            if (m_timer <= updateDiff)
             {
                 UnSummon();
                 return;
             }
-            m_timer -= update_diff;
+            m_timer -= updateDiff;
             break;
         }
         default:
@@ -208,7 +209,7 @@ void TemporarySpawn::Update(uint32 update_diff,  uint32 diff)
             break;
     }
 
-    Creature::Update(update_diff, diff);
+    Creature::Update();
 }
 
 void TemporarySpawn::SetSummonProperties(TempSpawnType type, uint32 lifetime)

@@ -511,7 +511,7 @@ Player::Player(WorldSession* session): Unit(), m_mover(this), m_camera(this), m_
         m_bgBattleGroundQueueID[j].invitedToInstance = 0;
     }
 
-    m_logintime = time(nullptr);
+    m_logintime = GlobalTimer::GetSystemTimeT();
     m_Last_tick = m_logintime;
     m_WeaponProficiency = 0;
     m_ArmorProficiency = 0;
@@ -558,7 +558,7 @@ Player::Player(WorldSession* session): Unit(), m_mover(this), m_camera(this), m_
         m_baseRatingValue[i] = 0;
 
     // Honor System
-    m_lastHonorUpdateTime = time(nullptr);
+    m_lastHonorUpdateTime = GlobalTimer::GetSystemTimeT();
 
     // Player summoning
     m_summon_expire = 0;
@@ -731,7 +731,7 @@ bool Player::Create(uint32 guidlow, const std::string& name, uint8 race, uint8 c
     SetArenaPoints(sWorld.getConfig(CONFIG_UINT32_START_ARENA_POINTS));
 
     // Played time
-    m_Last_tick = time(nullptr);
+    m_Last_tick = GlobalTimer::GetSystemTimeT();
     m_Played_time[PLAYED_TIME_TOTAL] = 0;
     m_Played_time[PLAYED_TIME_LEVEL] = 0;
 
@@ -1177,13 +1177,16 @@ void Player::SetDrunkValue(uint16 newDrunkenValue, uint32 itemId)
     SendMessageToSet(data, true);
 }
 
-void Player::Update(uint32 update_diff, uint32 p_time)
+void Player::Update()
 {
     if (!IsInWorld())
         return;
 
+    uint32 updateDiff = GetMap()->GetSyncUpdateDiff();
+    time_t now = GetMap()->GetSyncTimeT();
+
     // Undelivered mail
-    if (m_nextMailDelivereTime && m_nextMailDelivereTime <= time(nullptr))
+    if (m_nextMailDelivereTime && m_nextMailDelivereTime <= now)
     {
         SendNewMail();
         ++unReadMails;
@@ -1194,18 +1197,16 @@ void Player::Update(uint32 update_diff, uint32 p_time)
 
     // Update player only attacks
     if (uint32 ranged_att = getAttackTimer(RANGED_ATTACK))
-        setAttackTimer(RANGED_ATTACK, (update_diff >= ranged_att ? 0 : ranged_att - update_diff));
+        setAttackTimer(RANGED_ATTACK, (updateDiff >= ranged_att ? 0 : ranged_att - updateDiff));
 
     // Used to implement delayed far teleports
     SetCanDelayTeleport(true);
-    Unit::Update(update_diff, p_time);
+    Unit::Update();
     SetCanDelayTeleport(false);
-
-    time_t now = time(nullptr);
 
     UpdatePvPFlag(now);
 
-    UpdateContestedPvP(update_diff);
+    UpdateContestedPvP(updateDiff);
 
     UpdateDuelFlag(now);
 
@@ -1214,8 +1215,8 @@ void Player::Update(uint32 update_diff, uint32 p_time)
     UpdateAfkReport(now);
 
     // Update items that have just a limited lifetime
-    if (now > m_Last_tick)
-        UpdateItemDuration(uint32(now - m_Last_tick));
+    if (GlobalTimer::GetSystemTimeT() > m_Last_tick)
+        UpdateItemDuration(uint32(GlobalTimer::GetSystemTimeT() - m_Last_tick));
 
     if (!m_timedquests.empty())
     {
@@ -1223,7 +1224,7 @@ void Player::Update(uint32 update_diff, uint32 p_time)
         while (iter != m_timedquests.end())
         {
             QuestStatusData& q_status = mQuestStatus[*iter];
-            if (q_status.m_timer <= update_diff)
+            if (q_status.m_timer <= updateDiff)
             {
                 uint32 quest_id  = *iter;
                 ++iter;                                     // Current iter will be removed in FailQuest
@@ -1231,7 +1232,7 @@ void Player::Update(uint32 update_diff, uint32 p_time)
             }
             else
             {
-                q_status.m_timer -= update_diff;
+                q_status.m_timer -= updateDiff;
                 if (q_status.uState != QUEST_NEW) q_status.uState = QUEST_CHANGED;
                 ++iter;
             }
@@ -1269,31 +1270,31 @@ void Player::Update(uint32 update_diff, uint32 p_time)
 
     if (m_regenTimer)
     {
-        if (update_diff >= m_regenTimer)
+        if (updateDiff >= m_regenTimer)
             m_regenTimer = 0;
         else
-            m_regenTimer -= update_diff;
+            m_regenTimer -= updateDiff;
     }
 
     if (m_positionStatusUpdateTimer)
     {
-        if (update_diff >= m_positionStatusUpdateTimer)
+        if (updateDiff >= m_positionStatusUpdateTimer)
             m_positionStatusUpdateTimer = 0;
         else
-            m_positionStatusUpdateTimer -= update_diff;
+            m_positionStatusUpdateTimer -= updateDiff;
     }
 
     if (m_weaponChangeTimer > 0)
     {
-        if (update_diff >= m_weaponChangeTimer)
+        if (updateDiff >= m_weaponChangeTimer)
             m_weaponChangeTimer = 0;
         else
-            m_weaponChangeTimer -= update_diff;
+            m_weaponChangeTimer -= updateDiff;
     }
 
     if (m_zoneUpdateTimer > 0)
     {
-        if (update_diff >= m_zoneUpdateTimer)
+        if (updateDiff >= m_zoneUpdateTimer)
         {
             uint32 newzone, newarea;
             GetZoneAndAreaId(newzone, newarea);
@@ -1311,15 +1312,15 @@ void Player::Update(uint32 update_diff, uint32 p_time)
             }
         }
         else
-            m_zoneUpdateTimer -= update_diff;
+            m_zoneUpdateTimer -= updateDiff;
     }
 
     if (m_timeSyncTimer > 0)
     {
-        if (update_diff >= m_timeSyncTimer)
+        if (updateDiff >= m_timeSyncTimer)
             SendTimeSync();
         else
-            m_timeSyncTimer -= update_diff;
+            m_timeSyncTimer -= updateDiff;
     }
 
     if (isAlive())
@@ -1332,43 +1333,44 @@ void Player::Update(uint32 update_diff, uint32 p_time)
 
     if (m_nextSave > 0)
     {
-        if (update_diff >= m_nextSave)
+        if (updateDiff >= m_nextSave)
         {
             // m_nextSave reseted in SaveToDB call
             SaveToDB();
             DETAIL_LOG("Player '%s' (GUID: %u) saved", GetName(), GetGUIDLow());
         }
         else
-            m_nextSave -= update_diff;
+            m_nextSave -= updateDiff;
     }
 
     // Handle Water/drowning
-    HandleDrowning(update_diff);
+    HandleDrowning(updateDiff);
 
     // Handle detect stealth players
     if (m_DetectInvTimer > 0)
     {
-        if (update_diff >= m_DetectInvTimer)
+        if (updateDiff >= m_DetectInvTimer)
         {
             HandleStealthedUnitsDetection();
             m_DetectInvTimer = 3000;
         }
         else
-            m_DetectInvTimer -= update_diff;
+            m_DetectInvTimer -= updateDiff;
     }
 
     // Played time
-    if (now > m_Last_tick)
+    time_t sysNow = GlobalTimer::GetSystemTimeT();
+    if (sysNow > m_Last_tick)
     {
-        uint32 elapsed = uint32(now - m_Last_tick);
+        uint32 elapsed = uint32(sysNow - m_Last_tick);
         m_Played_time[PLAYED_TIME_TOTAL] += elapsed;        // Total played time
         m_Played_time[PLAYED_TIME_LEVEL] += elapsed;        // Level played time
-        m_Last_tick = now;
+        m_Last_tick = sysNow;
     }
 
     if (m_drunk)
     {
-        m_drunkTimer += update_diff;
+        m_drunkTimer += updateDiff;
 
         if (m_drunkTimer > 10 * IN_MILLISECONDS)
             HandleSobering();
@@ -1377,26 +1379,26 @@ void Player::Update(uint32 update_diff, uint32 p_time)
     // Not auto-free ghost from body in instances
     if (m_deathTimer > 0  && !GetMap()->Instanceable())
     {
-        if (p_time >= m_deathTimer)
+        if (updateDiff >= m_deathTimer)
         {
             m_deathTimer = 0;
             BuildPlayerRepop();
             RepopAtGraveyard();
         }
         else
-            m_deathTimer -= p_time;
+            m_deathTimer -= updateDiff;
     }
 
-    UpdateEnchantTime(update_diff);
-    UpdateHomebindTime(update_diff);
+    UpdateEnchantTime(updateDiff);
+    UpdateHomebindTime(updateDiff);
 
-    if (m_createdInstanceClearTimer < update_diff)
+    if (m_createdInstanceClearTimer < updateDiff)
     {
         m_createdInstanceClearTimer = MINUTE * IN_MILLISECONDS;
         UpdateNewInstanceIdTimers(std::chrono::time_point_cast<std::chrono::milliseconds>(Clock::now()));
     }
     else
-        m_createdInstanceClearTimer -= update_diff;
+        m_createdInstanceClearTimer -= updateDiff;
 
     // Group update
     SendUpdateToOutOfRangeGroupMembers();
@@ -1410,9 +1412,9 @@ void Player::Update(uint32 update_diff, uint32 p_time)
 
 #ifdef BUILD_PLAYERBOT
     if (m_playerbotAI)
-        m_playerbotAI->UpdateAI(p_time);
+        m_playerbotAI->UpdateAI(updateDiff);
     else if (m_playerbotMgr)
-        m_playerbotMgr->UpdateAI(p_time);
+        m_playerbotMgr->UpdateAI(updateDiff);
 #endif
 }
 
@@ -2738,7 +2740,7 @@ void Player::SendInitialSpells() const
     uint32 cdCount = 0;
     const size_t cdCountPos = data.wpos();
     data << uint16(0);
-    auto currTime = GetMap()->GetCurrentClockTime();
+    auto currTime = GetMap()->GetSyncTime();
 
     for (auto& cdItr : m_cooldownMap)
     {
@@ -2819,7 +2821,7 @@ void Player::UpdateNextMailTimeAndUnreads()
 {
     // calculate next delivery time (min. from non-delivered mails
     // and recalculate unReadMail
-    time_t cTime = time(nullptr);
+    time_t cTime = GetMap()->GetSyncTimeT();
     m_nextMailDelivereTime = 0;
     unReadMails = 0;
     for (PlayerMails::iterator itr = m_mail.begin(); itr != m_mail.end(); ++itr)
@@ -2836,7 +2838,7 @@ void Player::UpdateNextMailTimeAndUnreads()
 
 void Player::AddNewMailDeliverTime(time_t deliver_time)
 {
-    if (deliver_time <= time(nullptr))                         // ready now
+    if (deliver_time <= GetMap()->GetSyncTimeT())  // ready now
     {
         ++unReadMails;
         SendNewMail();
@@ -3498,7 +3500,7 @@ void Player::_LoadSpellCooldowns(QueryResult* result)
 
     if (result)
     {
-        auto curTime = GetMap()->GetCurrentClockTime();
+        auto curTime = GetMap()->GetSyncTime();
 
         do
         {
@@ -3541,7 +3543,7 @@ void Player::_LoadSpellCooldowns(QueryResult* result)
             if (spellRecTime == std::chrono::milliseconds::zero() && catRecTime == std::chrono::milliseconds::zero())
                 continue;
 
-            m_cooldownMap.AddCooldown(curTime, spell_id, uint32(spellRecTime.count()), category, uint32(catRecTime.count()), item_id);
+            m_cooldownMap.AddCooldown(spell_id, spellExpireTime, category, catExpireTime, item_id);
 #ifdef _DEBUG
             uint32 spellCDDuration = std::chrono::duration_cast<std::chrono::seconds>(spellRecTime).count();
             uint32 catCDDuration = std::chrono::duration_cast<std::chrono::seconds>(catRecTime).count();
@@ -3566,7 +3568,7 @@ void Player::_SaveSpellCooldowns()
     stmt.PExecute(GetGUIDLow());
 
     static SqlStatementID insertSpellCooldown;
-    TimePoint currTime = GetMap()->GetCurrentClockTime();
+    TimePoint currTime = GetMap()->GetSyncTime();
 
     for (auto& cdItr : m_cooldownMap)
     {
@@ -3678,7 +3680,7 @@ bool Player::resetTalents(bool no_cost)
         ModifyMoney(-(int32)cost);
 
         m_resetTalentsCost = cost;
-        m_resetTalentsTime = time(nullptr);
+        m_resetTalentsTime = GetMap()->GetSyncTimeT();
     }
 
     // FIXME: remove pet before or after unlearn spells? for now after unlearn to allow removing of talent related, pet affecting auras
@@ -4176,7 +4178,7 @@ void Player::DeleteFromDB(ObjectGuid playerguid, uint32 accountId, bool updateRe
         }
         // The character gets unlinked from the account, the name gets freed up and appears as deleted ingame
         case 1:
-            CharacterDatabase.PExecute("UPDATE characters SET deleteInfos_Name=name, deleteInfos_Account=account, deleteDate='" UI64FMTD "', name='', account=0 WHERE guid=%u", uint64(time(nullptr)), lowguid);
+            CharacterDatabase.PExecute("UPDATE characters SET deleteInfos_Name=name, deleteInfos_Account=account, deleteDate='" UI64FMTD "', name='', account=0 WHERE guid=%u", uint64(GlobalTimer::GetSystemTimeT()), lowguid);
             break;
         default:
             sLog.outError("Player::DeleteFromDB: Unsupported delete method: %u.", charDelete_method);
@@ -4211,7 +4213,8 @@ void Player::DeleteOldCharacters(uint32 keepDays)
 {
     sLog.outString("Player::DeleteOldChars: Deleting all characters which have been deleted %u days before...", keepDays);
 
-    QueryResult* resultChars = CharacterDatabase.PQuery("SELECT guid, deleteInfos_Account FROM characters WHERE deleteDate IS NOT NULL AND deleteDate < '" UI64FMTD "'", uint64(time(nullptr) - time_t(keepDays * DAY)));
+    QueryResult* resultChars = CharacterDatabase.PQuery("SELECT guid, deleteInfos_Account FROM characters WHERE deleteDate IS NOT NULL AND deleteDate < '" UI64FMTD "'",
+        uint64(GlobalTimer::GetSystemTimeT() - time_t(keepDays * DAY)));
     if (resultChars)
     {
         sLog.outString("Player::DeleteOldChars: Found %u character(s) to delete", uint32(resultChars->GetRowCount()));
@@ -6303,8 +6306,8 @@ void Player::UpdateArenaFields(void)
 void Player::UpdateHonorFields()
 {
     /// called when rewarding honor and at each save
-    time_t now = time(nullptr);
-    time_t today = (time(nullptr) / DAY) * DAY;
+    time_t now = GetMap()->GetSyncTimeT();
+    time_t today = (now / DAY) * DAY;
 
     if (m_lastHonorUpdateTime < today)
     {
@@ -6666,7 +6669,7 @@ void Player::UpdateZone(uint32 newZone, uint32 newArea)
     else                                                    // in friendly area
     {
         if (IsPvP() && !HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_IN_PVP) && pvpInfo.endTimer == 0)
-            pvpInfo.endTimer = time(nullptr);               // start toggle-off
+            pvpInfo.endTimer = GetMap()->GetSyncTimeT(); // start toggle-off
     }
 
     if (zone->flags & AREA_FLAG_SANCTUARY)                  // in sanctuary
@@ -11129,7 +11132,7 @@ void Player::AddItemToBuyBackSlot(Item* pItem, uint32 money)
     DEBUG_LOG("STORAGE: AddItemToBuyBackSlot item = %u, slot = %u", pItem->GetEntry(), slot);
 
     m_items[slot] = pItem;
-    time_t base = time(nullptr);
+    time_t base = GetMap()->GetSyncTimeT();
     uint32 etime = uint32(base - m_logintime + (30 * 3600));
     uint32 eslot = slot - BUYBACK_SLOT_START;
 
@@ -12711,7 +12714,7 @@ void Player::AddQuest(Quest const* pQuest, Object* questGiver)
 
         AddTimedQuest(quest_id);
         questStatusData.m_timer = limittime * IN_MILLISECONDS;
-        qtime = static_cast<uint32>(time(nullptr)) + limittime;
+        qtime = static_cast<uint32>(GetMap()->GetSyncTimeT()) + limittime;
     }
     else
         questStatusData.m_timer = 0;
@@ -14629,7 +14632,7 @@ bool Player::LoadFromDB(ObjectGuid guid, SqlQueryHolder* holder)
 
     SaveRecallPosition();
 
-    time_t now = time(nullptr);
+    time_t now = GetMap()->GetSyncTimeT();
     time_t logoutTime = time_t(fields[22].GetUInt64());
 
     // since last logout (in seconds)
@@ -15770,7 +15773,7 @@ void Player::SendRaidInfo()
     size_t p_counter = data.wpos();
     data << uint32(counter);                                // placeholder
 
-    time_t now = time(nullptr);
+    time_t now = GetMap()->GetSyncTimeT();
 
     for (int i = 0; i < MAX_DIFFICULTY; ++i)
     {
@@ -15780,7 +15783,7 @@ void Player::SendRaidInfo()
             {
                 DungeonPersistentState* state = itr->second.state;
                 data << uint32(state->GetMapId());          // map id
-                data << uint32(state->GetResetTime() - time(nullptr));
+                data << uint32(state->GetResetTime() - now);
                 data << uint32(state->GetInstanceId());     // instance id
                 data << uint32(counter);
                 counter++;
@@ -16028,7 +16031,7 @@ void Player::SaveToDB()
     uberInsert.addUInt32(m_Played_time[PLAYED_TIME_LEVEL]);
 
     uberInsert.addFloat(finiteAlways(m_rest_bonus));
-    uberInsert.addUInt64(uint64(time(nullptr)));
+    uberInsert.addUInt64(uint64(GetMap()->GetSyncTimeT()));
     uberInsert.addUInt32(HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_RESTING) ? 1 : 0);
     // save, far from tavern/city
     // save, but in tavern/city
@@ -16741,7 +16744,7 @@ void Player::UpdateSpeakTime()
     if (GetSession()->GetSecurity() > SEC_PLAYER)
         return;
 
-    time_t current = time(nullptr);
+    time_t current = GetMap()->GetSyncTimeT();
     if (m_speakTime > current)
     {
         uint32 max_count = sWorld.getConfig(CONFIG_UINT32_CHATFLOOD_MESSAGE_COUNT);
@@ -16767,7 +16770,7 @@ void Player::UpdateSpeakTime()
 
 bool Player::CanSpeak() const
 {
-    return  GetSession()->m_muteTime <= time(nullptr);
+    return  GetSession()->m_muteTime <= GetMap()->GetSyncTimeT();
 }
 
 /*********************************************************/
@@ -17108,7 +17111,7 @@ void Player::PetSpellInitialize() const
     uint32 cdCount = 0;
     const size_t cdCountPos = data.wpos();
     data << uint16(0);
-    auto currTime = GetMap()->GetCurrentClockTime();
+    auto currTime = GetMap()->GetSyncTime();
 
     for (auto& cdItr : m_cooldownMap)
     {
@@ -18102,7 +18105,7 @@ void Player::UpdatePvP(bool state, bool ovrride)
     else
     {
         if (pvpInfo.endTimer != 0)
-            pvpInfo.endTimer = time(nullptr);
+            pvpInfo.endTimer = GetMap()->GetSyncTimeT();
         else
             SetPvP(state);
     }
@@ -19239,7 +19242,7 @@ void Player::SummonIfPossible(bool agree)
     }
 
     // expire and auto declined
-    if (m_summon_expire < time(nullptr))
+    if (m_summon_expire < GetMap()->GetSyncTimeT())
         return;
 
     // stop taxi flight at summon
@@ -19689,7 +19692,7 @@ uint32 Player::GetCorpseReclaimDelay(bool pvp) const
         return corpseReclaimDelay[0];
     }
 
-    time_t now = time(nullptr);
+    time_t now = GetMap()->GetSyncTimeT();
     // 0..2 full period
     uint32 count = (now < m_deathExpireTime) ? uint32((m_deathExpireTime - now) / DEATH_EXPIRE_STEP) : 0;
     return corpseReclaimDelay[count];
@@ -19703,7 +19706,7 @@ void Player::UpdateCorpseReclaimDelay()
             (!pvp && !sWorld.getConfig(CONFIG_BOOL_DEATH_CORPSE_RECLAIM_DELAY_PVE)))
         return;
 
-    time_t now = time(nullptr);
+    time_t now = GetMap()->GetSyncTimeT();
     if (now < m_deathExpireTime)
     {
         // full and partly periods 1..3
@@ -19744,7 +19747,7 @@ void Player::SendCorpseReclaimDelay(bool load) const
 
         time_t expected_time = corpse->GetGhostTime() + corpseReclaimDelay[count];
 
-        time_t now = time(nullptr);
+        time_t now = GetMap()->GetSyncTimeT();
         if (now >= expected_time)
             return;
 
@@ -20601,7 +20604,7 @@ void Player::SetRestType(RestType n_r_type, uint32 areaTriggerId /*= 0*/)
         SetFlag(PLAYER_FLAGS, PLAYER_FLAGS_RESTING);
 
         inn_trigger_id = areaTriggerId;
-        time_inn_enter = time(nullptr);
+        time_inn_enter = GetMap()->GetSyncTimeT();
 
         if (sWorld.IsFFAPvPRealm())
             SetPvPFreeForAll(false);
@@ -20869,7 +20872,16 @@ void Player::AddCooldown(SpellEntry const& spellEntry, ItemPrototype const* item
 
     if (permanent)
     {
-        m_cooldownMap.AddCooldown(GetMap()->GetCurrentClockTime(), spellEntry.Id, recTime, spellCategory, categoryRecTime, itemId, true);
+        TimePoint spellExpireTime = TimePoint();
+        TimePoint catExpireTime = TimePoint();
+
+        if (recTime)
+            spellExpireTime = GetMap()->GetSyncTime() + std::chrono::milliseconds(recTime);
+
+        if (categoryRecTime)
+            catExpireTime = GetMap()->GetSyncTime() + std::chrono::milliseconds(spellEntry.CategoryRecoveryTime);
+
+        m_cooldownMap.AddCooldown(spellEntry.Id, spellExpireTime, spellCategory, catExpireTime, itemId, true);
         return;
     }
 
@@ -20889,8 +20901,17 @@ void Player::AddCooldown(SpellEntry const& spellEntry, ItemPrototype const* item
 
     if (recTime || categoryRecTime)
     {
+        TimePoint spellExpireTime = TimePoint();
+        TimePoint catExpireTime = TimePoint();
+
+        if (recTime)
+            spellExpireTime = GetMap()->GetSyncTime() + std::chrono::milliseconds(recTime);
+
+        if (categoryRecTime)
+            catExpireTime = GetMap()->GetSyncTime() + std::chrono::milliseconds(spellEntry.CategoryRecoveryTime);
+
         // ready to add the cooldown
-        m_cooldownMap.AddCooldown(GetMap()->GetCurrentClockTime(), spellEntry.Id, recTime, spellCategory, categoryRecTime, itemId);
+        m_cooldownMap.AddCooldown(spellEntry.Id, spellExpireTime, spellCategory, catExpireTime, itemId);
 
         // after some aura fade or potion activation we have to send cooldown event to start cd client side
         if (haveToSendEvent)
@@ -20958,7 +20979,7 @@ void Player::RemoveAllCooldowns(bool sendOnly /*= false*/)
 
 void Player::LockOutSpells(SpellSchoolMask schoolMask, uint32 duration)
 {
-    TimePoint lockoutExpireTime = std::chrono::milliseconds(duration) + GetMap()->GetCurrentClockTime();
+    TimePoint lockoutExpireTime = std::chrono::milliseconds(duration) + GetMap()->GetSyncTime();
     ByteBuffer cdData;
     uint32 spellCount = 0;
 

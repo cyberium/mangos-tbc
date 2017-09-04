@@ -3877,7 +3877,7 @@ bool ChatHandler::HandleNpcInfoCommand(char* /*args*/)
     uint32 Entry = target->GetEntry();
     CreatureInfo const* cInfo = target->GetCreatureInfo();
 
-    time_t curRespawnDelay = target->GetRespawnTimeEx() - time(nullptr);
+    time_t curRespawnDelay = target->GetRespawnTimeEx() - GlobalTimer::GetSystemTimeT();
     if (curRespawnDelay < 0)
         curRespawnDelay = 0;
     std::string curRespawnDelayStr = secsToTimeString(curRespawnDelay, true);
@@ -5287,7 +5287,7 @@ bool ChatHandler::HandleBanInfoHelper(uint32 accountid, char const* accountname)
 
         time_t unbandate = time_t(fields[3].GetUInt64());
         bool active = false;
-        if (fields[2].GetBool() && (fields[1].GetUInt64() == (uint64)0 || unbandate >= time(nullptr)))
+        if (fields[2].GetBool() && (fields[1].GetUInt64() == (uint64)0 || unbandate >= GlobalTimer::GetSystemTimeT()))
             active = true;
         bool permanent = (fields[1].GetUInt64() == (uint64)0);
         std::string bantime = permanent ? GetMangosString(LANG_BANINFO_INFINITE) : secsToTimeString(fields[1].GetUInt64(), true);
@@ -6072,7 +6072,7 @@ bool ChatHandler::HandleInstanceListBindsCommand(char* /*args*/)
         for (Player::BoundInstancesMap::const_iterator itr = binds.begin(); itr != binds.end(); ++itr)
         {
             DungeonPersistentState* state = itr->second.state;
-            std::string timeleft = secsToTimeString(state->GetResetTime() - time(nullptr), true);
+            std::string timeleft = secsToTimeString(state->GetResetTime() - GlobalTimer::GetSystemTimeT(), true);
             if (const MapEntry* entry = sMapStore.LookupEntry(itr->first))
             {
                 PSendSysMessage("map: %d (%s) inst: %d perm: %s diff: %s canReset: %s TTR: %s",
@@ -6095,7 +6095,7 @@ bool ChatHandler::HandleInstanceListBindsCommand(char* /*args*/)
             for (Group::BoundInstancesMap::const_iterator itr = binds.begin(); itr != binds.end(); ++itr)
             {
                 DungeonPersistentState* state = itr->second.state;
-                std::string timeleft = secsToTimeString(state->GetResetTime() - time(nullptr), true);
+                std::string timeleft = secsToTimeString(state->GetResetTime() - GlobalTimer::GetSystemTimeT(), true);
                 if (const MapEntry* entry = sMapStore.LookupEntry(itr->first))
                 {
                     PSendSysMessage("map: %d (%s) inst: %d perm: %s diff: %s canReset: %s TTR: %s",
@@ -6147,7 +6147,7 @@ bool ChatHandler::HandleInstanceUnbindCommand(char* args)
             if (itr->first != player->GetMapId())
             {
                 DungeonPersistentState* save = itr->second.state;
-                std::string timeleft = secsToTimeString(save->GetResetTime() - time(nullptr), true);
+                std::string timeleft = secsToTimeString(save->GetResetTime() - GlobalTimer::GetSystemTimeT(), true);
 
                 if (const MapEntry* entry = sMapStore.LookupEntry(itr->first))
                 {

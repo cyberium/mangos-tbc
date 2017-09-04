@@ -165,8 +165,7 @@ void ObjectUpdater::Visit(GridRefManager<T>& m)
 {
     for (typename GridRefManager<T>::iterator iter = m.begin(); iter != m.end(); ++iter)
     {
-        WorldObject::UpdateHelper helper(iter->getSource());
-        helper.Update(i_timeDiff);
+        iter->getSource()->Update();
     }
 }
 

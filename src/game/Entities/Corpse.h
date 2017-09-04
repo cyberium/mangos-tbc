@@ -75,7 +75,7 @@ class Corpse : public WorldObject
         uint32 getFaction() const;
 
         time_t const& GetGhostTime() const { return m_time; }
-        void ResetGhostTime() { m_time = time(nullptr); }
+        void ResetGhostTime() { m_time = GlobalTimer::GetSystemTimeT(); }
         CorpseType GetType() const { return m_type; }
 
         bool IsHostileTo(Unit const* unit) const override;

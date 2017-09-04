@@ -44,8 +44,10 @@ inline void MaNGOS::ObjectUpdater::Visit(CreatureMapType& m)
 {
     for (CreatureMapType::iterator iter = m.begin(); iter != m.end(); ++iter)
     {
-        WorldObject::UpdateHelper helper(iter->getSource());
-        helper.Update(i_timeDiff);
+        //WorldObject::UpdateHelper helper(iter->getSource());
+        //helper.Update(i_timeDiff);
+
+        iter->getSource()->Update();
     }
 }
 

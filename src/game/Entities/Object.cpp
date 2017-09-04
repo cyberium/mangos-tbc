@@ -1996,7 +1996,7 @@ void WorldObject::AddGCD(SpellEntry const& spellEntry, uint32 forcedDuration /*=
     if (!gcdRecTime)
         return;
 
-    m_GCDCatMap.emplace(spellEntry.StartRecoveryCategory, std::chrono::milliseconds(gcdRecTime) + GetMap()->GetCurrentClockTime());
+    m_GCDCatMap.emplace(spellEntry.StartRecoveryCategory, std::chrono::milliseconds(gcdRecTime) + GetMap()->GetSyncTime());
 }
 
 bool WorldObject::HaveGCD(SpellEntry const* spellEntry) const
@@ -2015,7 +2015,15 @@ bool WorldObject::HaveGCD(SpellEntry const* spellEntry) const
 void WorldObject::AddCooldown(SpellEntry const& spellEntry, ItemPrototype const* itemProto /*= nullptr*/, bool permanent /*= false*/, uint32 forcedDuration /*= 0*/)
 {
     uint32 recTimeDuration = forcedDuration ? forcedDuration : spellEntry.RecoveryTime;
-    m_cooldownMap.AddCooldown(GetMap()->GetCurrentClockTime(), spellEntry.Id, recTimeDuration, spellEntry.Category, spellEntry.CategoryRecoveryTime);
+    TimePoint spellExpireTime = TimePoint();
+    TimePoint catExpireTime = TimePoint();
+    
+    if (recTimeDuration)
+        spellExpireTime = GetMap()->GetSyncTime() + std::chrono::milliseconds(recTimeDuration);
+    if (spellEntry.Category && spellEntry.CategoryRecoveryTime)
+        catExpireTime = GetMap()->GetSyncTime() + std::chrono::milliseconds(spellEntry.CategoryRecoveryTime);
+
+    m_cooldownMap.AddCooldown(spellEntry.Id, spellExpireTime, spellEntry.Category, catExpireTime);
 }
 
 void WorldObject::UpdateCooldowns(TimePoint const& now)
@@ -2126,7 +2134,7 @@ void WorldObject::LockOutSpells(SpellSchoolMask schoolMask, uint32 duration)
     for (uint32 i = 0; i < MAX_SPELL_SCHOOL; ++i)
     {
         if (schoolMask & (1 << i))
-            m_lockoutMap.emplace(SpellSchools(i), std::chrono::milliseconds(duration) + GetMap()->GetCurrentClockTime());
+            m_lockoutMap.emplace(SpellSchools(i), std::chrono::milliseconds(duration) + GetMap()->GetSyncTime());
     }
 }
 
@@ -2173,7 +2181,7 @@ void ConvertMillisecondToStr(std::chrono::milliseconds& duration, std::stringstr
 void WorldObject::PrintCooldownList(ChatHandler& chat) const
 {
     // print gcd
-    auto now = GetMap()->GetCurrentClockTime();
+    auto now = GetMap()->GetSyncTime();
     uint32 cdCount = 0;
     uint32 permCDCount = 0;
 

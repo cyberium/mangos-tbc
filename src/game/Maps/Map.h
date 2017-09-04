@@ -303,7 +303,12 @@ class Map : public GridRefManager<NGridType>
         bool GetRandomPointInTheAir(float& x, float& y, float& z, float radius) const;
         bool GetRandomPointUnderWater(float& x, float& y, float& z, float radius, GridMapLiquidData& liquid_status) const;
 
-        TimePoint GetCurrentClockTime();
+        // deprecated
+        time_t GetSyncTimeT() { return Clock::to_time_t(m_mapTimer.GetSyncTime()); }
+
+        TimePoint const& GetSyncTime() { return m_mapTimer.GetSyncTime(); }
+        uint32 GetSyncUpdateDiff() { return m_mapTimer.GetSyncUpdateDiff(); }
+
     private:
         void LoadMapAndVMap(int gx, int gy);
 
@@ -338,6 +343,8 @@ class Map : public GridRefManager<NGridType>
 
         void SendObjectUpdates();
         std::set<Object*> i_objectsToClientUpdate;
+
+        GlobalTimer m_mapTimer;
 
     protected:
         MapEntry const* i_mapEntry;

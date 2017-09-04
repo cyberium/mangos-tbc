@@ -410,7 +410,7 @@ void PoolGroup<Creature>::Spawn1Object(MapPersistentState& mapState, PoolObject*
             // for not loaded grid just update respawn time (avoid work for instances until implemented support)
             else if (!instantly)
             {
-                dataMapState->SaveCreatureRespawnTime(obj->guid, time(nullptr) + data->GetRandomRespawnTime());
+                dataMapState->SaveCreatureRespawnTime(obj->guid, GlobalTimer::GetSystemTimeT() + data->GetRandomRespawnTime());
             }
         }
     }
@@ -459,7 +459,7 @@ void PoolGroup<GameObject>::Spawn1Object(MapPersistentState& mapState, PoolObjec
             {
                 // for spawned by default object only
                 if (data->spawntimesecsmin >= 0)
-                    dataMapState->SaveGORespawnTime(obj->guid, time(nullptr) + data->GetRandomRespawnTime());
+                    dataMapState->SaveGORespawnTime(obj->guid, GlobalTimer::GetSystemTimeT() + data->GetRandomRespawnTime());
             }
         }
     }

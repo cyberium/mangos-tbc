@@ -37,7 +37,7 @@ Corpse::Corpse(CorpseType type) : WorldObject(),
 
     m_type = type;
 
-    m_time = time(nullptr);
+    m_time = GlobalTimer::GetSystemTimeT();
 }
 
 Corpse::~Corpse()

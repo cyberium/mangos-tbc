@@ -72,8 +72,9 @@ bool Totem::Create(uint32 guidlow, CreatureCreatePos& cPos, CreatureInfo const* 
     return true;
 }
 
-void Totem::Update(uint32 update_diff, uint32 time)
+void Totem::Update()
 {
+    uint32 updateDiff = GetMap()->GetSyncUpdateDiff();
     Unit* owner = GetOwner();
     if (!owner || !owner->isAlive() || !isAlive())
     {
@@ -81,15 +82,15 @@ void Totem::Update(uint32 update_diff, uint32 time)
         return;
     }
 
-    if (m_duration <= update_diff)
+    if (m_duration <= updateDiff)
     {
         UnSummon();                                         // remove self
         return;
     }
     else
-        m_duration -= update_diff;
+        m_duration -= updateDiff;
 
-    Creature::Update(update_diff, time);
+    Creature::Update();
 }
 
 void Totem::Summon(Unit* owner)

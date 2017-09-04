@@ -172,7 +172,7 @@ void WorldSession::HandleMoveWorldportAckOpcode()
     {
         if (time_t timeReset = sMapPersistentStateMgr.GetScheduler().GetResetTimeFor(mEntry->MapID))
         {
-            uint32 timeleft = uint32(timeReset - time(nullptr));
+            uint32 timeleft = uint32(timeReset - GlobalTimer::GetSystemTimeT());
             GetPlayer()->SendInstanceResetWarning(mEntry->MapID, timeleft);
         }
     }

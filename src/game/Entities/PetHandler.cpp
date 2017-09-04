@@ -603,7 +603,7 @@ void WorldSession::HandlePetRename(WorldPacket& recv_data)
     CharacterDatabase.PExecute("UPDATE character_pet SET name = '%s', renamed = '1' WHERE owner = '%u' AND id = '%u'", name.c_str(), _player->GetGUIDLow(), pet->GetCharmInfo()->GetPetNumber());
     CharacterDatabase.CommitTransaction();
 
-    pet->SetUInt32Value(UNIT_FIELD_PET_NAME_TIMESTAMP, uint32(time(nullptr)));
+    pet->SetUInt32Value(UNIT_FIELD_PET_NAME_TIMESTAMP, uint32(GlobalTimer::GetSystemTimeT()));
 }
 
 void WorldSession::HandlePetAbandon(WorldPacket& recv_data)
@@ -691,7 +691,7 @@ void WorldSession::HandlePetUnlearnOpcode(WorldPacket& recvPacket)
     // relearn pet passives
     pet->LearnPetPassives();
 
-    pet->m_resetTalentsTime = time(nullptr);
+    pet->m_resetTalentsTime = GlobalTimer::GetSystemTimeT();
     pet->m_resetTalentsCost = cost;
     _player->ModifyMoney(-(int32)cost);
 

@@ -32,7 +32,7 @@ instance_onyxias_lair::instance_onyxias_lair(Map* pMap) : ScriptedInstance(pMap)
 void instance_onyxias_lair::Initialize()
 {
     m_uiEncounter = NOT_STARTED;
-    m_tPhaseTwoStart = time(nullptr);
+    m_tPhaseTwoStart = GlobalTimer::GetSystemTimeT();
 }
 
 bool instance_onyxias_lair::IsEncounterInProgress() const
@@ -86,7 +86,7 @@ void instance_onyxias_lair::SetData(uint32 uiType, uint32 uiData)
     switch(uiData)
     {
         case DATA_LIFTOFF:
-            m_tPhaseTwoStart = time(nullptr);
+            m_tPhaseTwoStart = GlobalTimer::GetSystemTimeT();
             break;
         case IN_PROGRESS:
             // Respawn dead Onyxian Warders

@@ -147,13 +147,13 @@ void WorldSession::SendPacket(WorldPacket const& packet) const
     static uint64 sendPacketCount = 0;
     static uint64 sendPacketBytes = 0;
 
-    static time_t firstTime = time(nullptr);
+    static time_t firstTime = GlobalTimer::GetSystemTimeT();
     static time_t lastTime = firstTime;                     // next 60 secs start time
 
     static uint64 sendLastPacketCount = 0;
     static uint64 sendLastPacketBytes = 0;
 
-    time_t cur_time = time(nullptr);
+    time_t cur_time = GlobalTimer::GetSystemTimeT();
 
     if ((cur_time - lastTime) < 60)
     {
@@ -347,7 +347,7 @@ bool WorldSession::Update(PacketFilter& updater)
     if (updater.ProcessLogout())
     {
         ///- If necessary, log the player out
-        const time_t currTime = time(nullptr);
+        const time_t currTime = GlobalTimer::GetSystemTimeT();
 
         if (!m_Socket || m_Socket->IsClosed() || (ShouldLogOut(currTime) && !m_playerLoading))
             LogoutPlayer(true);

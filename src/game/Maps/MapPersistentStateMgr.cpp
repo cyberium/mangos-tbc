@@ -345,7 +345,7 @@ time_t DungeonResetScheduler::CalculateNextResetTime(InstanceTemplate const* tem
 
 void DungeonResetScheduler::LoadResetTimes()
 {
-    time_t now = time(nullptr);
+    time_t now = GlobalTimer::GetSystemTimeT();
     time_t today = (now / DAY) * DAY;
     time_t nextWeek = today + (7 * DAY);
 
@@ -537,7 +537,7 @@ void DungeonResetScheduler::ScheduleReset(bool add, time_t time, DungeonResetEve
 
 void DungeonResetScheduler::Update()
 {
-    time_t now = time(nullptr);
+    time_t now = GlobalTimer::GetSystemTimeT();
     while (!m_resetTimeQueue.empty() && m_resetTimeQueue.begin()->first < now)
     {
         DungeonResetEvent& event = m_resetTimeQueue.begin()->second;
@@ -588,7 +588,7 @@ void DungeonResetScheduler::Update()
 
 void DungeonResetScheduler::ResetAllRaid()
 {
-    time_t now = time(nullptr);
+    time_t now = GlobalTimer::GetSystemTimeT();
     ResetTimeQueue rTQ;
     rTQ.clear();
 
@@ -648,7 +648,7 @@ MapPersistentState* MapPersistentStateManager::AddPersistentState(MapEntry const
                 resetTime = m_Scheduler.GetResetTimeFor(mapEntry->MapID);
             else
             {
-                resetTime = time(nullptr) + 2 * HOUR;
+                resetTime = GlobalTimer::GetSystemTimeT() + 2 * HOUR;
                 // normally this will be removed soon after in DungeonMap::Add, prevent error
                 m_Scheduler.ScheduleReset(true, resetTime, DungeonResetEvent(RESET_EVENT_NORMAL_DUNGEON, mapEntry->MapID, instanceId));
             }
@@ -914,7 +914,7 @@ void MapPersistentStateManager::_ResetOrWarnAll(uint32 mapid, bool warn, uint32 
     if (!mapEntry->IsDungeon())
         return;
 
-    time_t now = time(nullptr);
+    time_t now = GlobalTimer::GetSystemTimeT();
 
     if (!warn)
     {

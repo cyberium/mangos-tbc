@@ -574,8 +574,8 @@ public:
     Unit* GetCurrentTarget() { return m_targetCombat; };
     void DoNextCombatManeuver();
     void DoCombatMovement();
-    void SetIgnoreUpdateTime(uint8 t = 0) { m_ignoreAIUpdatesUntilTime = time(nullptr) + t; };
-    time_t CurrentTime() { return time(nullptr); };
+    void SetIgnoreUpdateTime(uint8 t = 0) { m_ignoreAIUpdatesUntilTime = GlobalTimer::GetSystemTimeT() + t; };
+    time_t CurrentTime() { return GlobalTimer::GetSystemTimeT(); };
 
     Player* GetPlayerBot() const { return m_bot; }
     Player* GetPlayer() const { return m_bot; }
@@ -632,7 +632,7 @@ public:
     bool IsTank() { return (m_combatOrder & ORDERS_TANK) ? true : false; }
     bool IsHealer() { return (m_combatOrder & ORDERS_HEAL) ? true : false; }
     bool IsDPS() { return (m_combatOrder & ORDERS_ASSIST) ? true : false; }
-    bool Impulse() { srand ( time(nullptr) ); return(((rand() % 100) > 50) ? true : false); }
+    bool Impulse() { srand ( GlobalTimer::GetSystemTimeT() ); return(((rand() % 100) > 50) ? true : false); }
     ResistType GetResistType() { return this->m_resistType; }
     void SetMovementOrder(MovementOrderType mo, Unit *followTarget = 0);
     MovementOrderType GetMovementOrder() { return this->m_movementOrder; }

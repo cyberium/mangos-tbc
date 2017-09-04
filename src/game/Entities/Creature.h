@@ -385,7 +385,7 @@ struct VendorItemData
 struct VendorItemCount
 {
     explicit VendorItemCount(uint32 _item, uint32 _count)
-        : itemId(_item), count(_count), lastIncrementTime(time(nullptr)) {}
+        : itemId(_item), count(_count), lastIncrementTime(GlobalTimer::GetSystemTimeT()) {}
 
     uint32 itemId;
     uint32 count;
@@ -551,7 +551,7 @@ class Creature : public Unit
 
         char const* GetSubName() const { return GetCreatureInfo()->SubName; }
 
-        void Update(uint32 update_diff, uint32 time) override;  // overwrite Unit::Update
+        void Update() override;  // overwrite Unit::Update
 
         virtual void RegenerateAll(uint32 update_diff);
         uint32 GetEquipmentId() const { return m_equipmentId; }
@@ -725,7 +725,7 @@ class Creature : public Unit
 
         time_t const& GetRespawnTime() const { return m_respawnTime; }
         time_t GetRespawnTimeEx() const;
-        void SetRespawnTime(uint32 respawn) { m_respawnTime = respawn ? time(nullptr) + respawn : 0; }
+        void SetRespawnTime(uint32 respawn) { m_respawnTime = respawn ? GlobalTimer::GetSystemTimeT() + respawn : 0; }
         void Respawn();
         void SaveRespawnTime() override;
 

@@ -531,7 +531,7 @@ uint32 AuctionBotBuyer::GetBuyableEntry(AHB_Buyer_Config& config) const
 {
     config.SameItemInfo.clear();
     uint32 count = 0;
-    time_t Now = time(nullptr);
+    time_t Now = GlobalTimer::GetSystemTimeT();
 
     AuctionHouseObject::AuctionEntryMapBounds bounds = sAuctionMgr.GetAuctionsMap(config.GetHouseType())->GetAuctionsBounds();
     for (AuctionHouseObject::AuctionEntryMap::const_iterator itr = bounds.first; itr != bounds.second; ++itr)
@@ -597,7 +597,7 @@ uint32 AuctionBotBuyer::GetBuyableEntry(AHB_Buyer_Config& config) const
 
 void AuctionBotBuyer::PrepareListOfEntry(AHB_Buyer_Config& config) const
 {
-    time_t Now = time(nullptr) - 5;
+    time_t Now = GlobalTimer::GetSystemTimeT() - 5;
 
     for (CheckEntryMap::iterator itr = config.CheckedEntry.begin(); itr != config.CheckedEntry.end();)
     {
@@ -731,7 +731,7 @@ void AuctionBotBuyer::addNewAuctionBuyerBotBid(AHB_Buyer_Config& config) const
 
     PrepareListOfEntry(config);
 
-    time_t Now = time(nullptr);
+    time_t Now = GlobalTimer::GetSystemTimeT();
     uint32 BuyCycles;
     if (config.CheckedEntry.size() > sAuctionBotConfig.GetItemPerCycleBoost())
     {

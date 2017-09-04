@@ -675,7 +675,7 @@ bool GroupLootRoll::TryToStart(Loot& loot, uint32 itemSlot)
         {
             // start the roll
             SendStartRoll();
-            m_endTime = time(nullptr) + (LOOT_ROLL_TIMEOUT / 1000);
+            m_endTime = GlobalTimer::GetSystemTimeT() + (LOOT_ROLL_TIMEOUT / 1000);
             m_isStarted = true;
             return true;
         }
@@ -727,7 +727,7 @@ bool GroupLootRoll::UpdateRoll()
 {
     RollVoteMap::const_iterator winnerItr = m_rollVoteMap.end();
 
-    if (AllPlayerVoted(winnerItr) || m_endTime <= time(nullptr))
+    if (AllPlayerVoted(winnerItr) || m_endTime <= GlobalTimer::GetSystemTimeT())
     {
         Finish(winnerItr);
         return true;

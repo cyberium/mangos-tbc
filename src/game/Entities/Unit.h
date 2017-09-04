@@ -1208,7 +1208,7 @@ class Unit : public WorldObject
          */
         void ClearDiminishings() { m_Diminishing.clear(); }
 
-        void Update(uint32 update_diff, uint32 time) override;
+        void Update() override;
 
         /**
          * Updates the attack time for the given WeaponAttackType

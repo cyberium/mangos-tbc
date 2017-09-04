@@ -305,7 +305,7 @@ bool Pet::LoadPetFromDB(Player* owner, uint32 petentry /*= 0*/, uint32 petnumber
 
     SetCanModifyStats(true);
     InitStatsForLevel(petlevel);
-    SetUInt32Value(UNIT_FIELD_PET_NAME_TIMESTAMP, uint32(time(nullptr)));
+    SetUInt32Value(UNIT_FIELD_PET_NAME_TIMESTAMP, uint32(owner->GetMap()->GetSyncTimeT()));
     SetUInt32Value(UNIT_FIELD_PETEXPERIENCE, fields[5].GetUInt32());
 
     m_charmInfo->SetReactState(ReactStates(fields[6].GetUInt8()));
@@ -335,7 +335,7 @@ bool Pet::LoadPetFromDB(Player* owner, uint32 petentry /*= 0*/, uint32 petnumber
     }
 
     // since last save (in seconds)
-    uint32 timediff = uint32(time(nullptr) - fields[18].GetUInt64());
+    uint32 timediff = uint32(owner->GetMap()->GetSyncTimeT() - fields[18].GetUInt64());
 
     m_resetTalentsCost = fields[19].GetUInt32();
     m_resetTalentsTime = fields[20].GetUInt64();
@@ -553,7 +553,7 @@ void Pet::SavePetToDB(PetSaveMode mode)
         }
         savePet.addString(ss);
 
-        savePet.addUInt64(uint64(time(nullptr)));
+        savePet.addUInt64(uint64(GlobalTimer::GetSystemTimeT()));
         savePet.addUInt32(uint32(m_resetTalentsCost));
         savePet.addUInt64(uint64(m_resetTalentsTime));
         savePet.addUInt32(GetUInt32Value(UNIT_CREATED_BY_SPELL));
@@ -657,16 +657,16 @@ void Pet::SetDeathState(DeathState s)                       // overwrite virtual
     CastOwnerTalentAuras();
 }
 
-void Pet::Update(uint32 update_diff, uint32 diff)
+void Pet::Update()
 {
     if (m_removed)                                          // pet already removed, just wait in remove queue, no updates
         return;
-
+    uint32 updateDiff = GetMap()->GetSyncUpdateDiff();
     switch (m_deathState)
     {
         case CORPSE:
         {
-            if (m_corpseDecayTimer <= update_diff)
+            if (m_corpseDecayTimer <= updateDiff)
             {
                 // pet is dead so it doesn't have to be shown at character login
                 Unsummon(PET_SAVE_NOT_IN_SLOT);
@@ -697,8 +697,8 @@ void Pet::Update(uint32 update_diff, uint32 diff)
 
             if (m_duration > 0)
             {
-                if (m_duration > (int32)update_diff)
-                    m_duration -= (int32)update_diff;
+                if (m_duration > (int32)updateDiff)
+                    m_duration -= (int32)updateDiff;
                 else
                 {
                     Unsummon(getPetType() != SUMMON_PET ? PET_SAVE_AS_DELETED : PET_SAVE_NOT_IN_SLOT, owner);
@@ -711,7 +711,7 @@ void Pet::Update(uint32 update_diff, uint32 diff)
             break;
     }
 
-    Creature::Update(update_diff, diff);
+    Creature::Update();
 }
 
 void Pet::RegenerateAll(uint32 update_diff)
@@ -1506,7 +1506,7 @@ void Pet::_LoadSpellCooldowns()
 
     if (result)
     {
-        auto curTime = GetMap()->GetCurrentClockTime();
+        auto curTime = GetMap()->GetSyncTime();
         do
         {
             Field* fields = result->Fetch();
@@ -1525,6 +1525,8 @@ void Pet::_LoadSpellCooldowns()
             std::chrono::milliseconds spellRecTime = std::chrono::milliseconds::zero();
             if (spellExpireTime > curTime)
                 spellRecTime = std::chrono::duration_cast<std::chrono::milliseconds>(spellExpireTime - curTime);
+            else
+                continue;
 
             // skip outdated cooldown
             if (spellRecTime == std::chrono::milliseconds::zero())
@@ -1534,7 +1536,7 @@ void Pet::_LoadSpellCooldowns()
             cdData << uint32(uint32(spellRecTime.count()));
             ++cdCount;
 
-            m_cooldownMap.AddCooldown(GetMap()->GetCurrentClockTime(), spell_id, uint32(spellRecTime.count()));
+            m_cooldownMap.AddCooldown(spell_id, spellExpireTime);
 #ifdef _DEBUG
             uint32 spellCDDuration = std::chrono::duration_cast<std::chrono::seconds>(spellRecTime).count();
             sLog.outDebug("Adding spell cooldown to %s, SpellID(%u), recDuration(%us).", GetGuidStr().c_str(), spell_id, spellCDDuration);
@@ -1562,7 +1564,7 @@ void Pet::_SaveSpellCooldowns()
     SqlStatement stmt = CharacterDatabase.CreateStatement(delSpellCD, "DELETE FROM pet_spell_cooldown WHERE guid = ?");
     stmt.PExecute(m_charmInfo->GetPetNumber());
 
-    TimePoint currTime = GetMap()->GetCurrentClockTime();
+    TimePoint currTime = GetMap()->GetSyncTime();
 
     for (auto& cdItr : m_cooldownMap)
     {

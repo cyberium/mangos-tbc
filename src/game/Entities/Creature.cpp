@@ -215,7 +215,7 @@ void Creature::RemoveCorpse(bool inPlace)
 
     // script can set time (in seconds) explicit, override the original
     if (respawnDelay)
-        m_respawnTime = time(nullptr) + respawnDelay;
+        m_respawnTime = GetMap()->GetSyncTimeT() + respawnDelay;
 
     InterruptMoving();
 
@@ -512,8 +512,9 @@ uint32 Creature::ChooseDisplayId(const CreatureInfo* cinfo, const CreatureData* 
     return display_id;
 }
 
-void Creature::Update(uint32 update_diff, uint32 diff)
+void Creature::Update()
 {
+    uint32 updateDiff = GetMap()->GetSyncUpdateDiff();
     switch (m_deathState)
     {
         case JUST_ALIVED:
@@ -526,7 +527,7 @@ void Creature::Update(uint32 update_diff, uint32 diff)
             break;
         case DEAD:
         {
-            if (m_respawnTime <= time(nullptr) && (!m_isSpawningLinked || GetMap()->GetCreatureLinkingHolder()->CanSpawn(this)))
+            if (m_respawnTime <= GetMap()->GetSyncTimeT() && (!m_isSpawningLinked || GetMap()->GetCreatureLinkingHolder()->CanSpawn(this)))
             {
                 DEBUG_FILTER_LOG(LOG_FILTER_AI_AND_MOVEGENSS, "Respawning...");
                 m_respawnTime = 0;
@@ -573,44 +574,44 @@ void Creature::Update(uint32 update_diff, uint32 diff)
         }
         case CORPSE:
         {
-            Unit::Update(update_diff, diff);
+            Unit::Update();
 
             if (loot)
                 loot->Update();
 
             if (!m_isDeadByDefault)
             {
-                if (m_corpseDecayTimer <= update_diff)
+                if (m_corpseDecayTimer <= updateDiff)
                     RemoveCorpse();
                 else
-                    m_corpseDecayTimer -= update_diff;
+                    m_corpseDecayTimer -= updateDiff;
             }
 
             break;
         }
         case ALIVE:
         {
-            if (m_aggroDelay <= update_diff)
+            if (m_aggroDelay <= updateDiff)
                 m_aggroDelay = 0;
             else
-                m_aggroDelay -= update_diff;
+                m_aggroDelay -= updateDiff;
 
             if (m_isDeadByDefault)
             {
-                if (m_corpseDecayTimer <= update_diff)
+                if (m_corpseDecayTimer <= updateDiff)
                 {
                     RemoveCorpse();
                     break;
                 }
                 else
-                    m_corpseDecayTimer -= update_diff;
+                    m_corpseDecayTimer -= updateDiff;
             }
 
-            Unit::Update(update_diff, diff);
+            Unit::Update();
 
             // Creature can be dead after unit update
             if (isAlive())
-                RegenerateAll(update_diff);
+                RegenerateAll(updateDiff);
 
             break;
         }
@@ -1383,7 +1384,7 @@ bool Creature::LoadFromDB(uint32 guidlow, Map* map)
 
     m_respawnTime  = map->GetPersistentState()->GetCreatureRespawnTime(GetGUIDLow());
 
-    if (m_respawnTime > time(nullptr))                         // not ready to respawn
+    if (m_respawnTime > GetMap()->GetSyncTimeT()) // not ready to respawn
     {
         m_deathState = DEAD;
         if (CanFly())
@@ -1555,7 +1556,7 @@ void Creature::SetDeathState(DeathState s)
             m_respawnDelay = data->GetRandomRespawnTime();
 
         m_corpseDecayTimer = m_corpseDelay * IN_MILLISECONDS; // the max/default time for corpse decay (before creature is looted/AllLootRemovedFromCorpse() is called)
-        m_respawnTime = time(nullptr) + m_respawnDelay; // respawn delay (spawntimesecs)
+        m_respawnTime = GetMap()->GetSyncTimeT() + m_respawnDelay; // respawn delay (spawntimesecs)
 
         // always save boss respawn time at death to prevent crash cheating
         if (sWorld.getConfig(CONFIG_BOOL_SAVE_RESPAWN_TIME_IMMEDIATELY) || IsWorldBoss())
@@ -1619,7 +1620,7 @@ void Creature::Respawn()
     {
         if (HasStaticDBSpawnData())
             GetMap()->GetPersistentState()->SaveCreatureRespawnTime(GetGUIDLow(), 0);
-        m_respawnTime = time(nullptr);                         // respawn at next tick
+        m_respawnTime = GetMap()->GetSyncTimeT(); // respawn at next tick
     }
 }
 
@@ -1926,10 +1927,10 @@ void Creature::SaveRespawnTime()
     if (IsPet() || !HasStaticDBSpawnData())
         return;
 
-    if (m_respawnTime > time(nullptr))                         // dead (no corpse)
+    if (m_respawnTime > GetMap()->GetSyncTimeT()) // dead (no corpse)
         GetMap()->GetPersistentState()->SaveCreatureRespawnTime(GetGUIDLow(), m_respawnTime);
     else if (m_corpseDecayTimer > 0)                        // dead (corpse)
-        GetMap()->GetPersistentState()->SaveCreatureRespawnTime(GetGUIDLow(), time(nullptr) + m_respawnDelay + m_corpseDecayTimer / IN_MILLISECONDS);
+        GetMap()->GetPersistentState()->SaveCreatureRespawnTime(GetGUIDLow(), GetMap()->GetSyncTimeT() + m_respawnDelay + m_corpseDecayTimer / IN_MILLISECONDS);
 }
 
 bool Creature::IsOutOfThreatArea(Unit* pVictim) const
@@ -2274,7 +2275,7 @@ bool Creature::HasSpell(uint32 spellID) const
 
 time_t Creature::GetRespawnTimeEx() const
 {
-    time_t now = time(nullptr);
+    time_t now = GetMap()->GetSyncTimeT();
     if (m_respawnTime > now)                                // dead (no corpse)
         return m_respawnTime;
     else if (m_corpseDecayTimer > 0)                        // dead (corpse)
@@ -2364,7 +2365,7 @@ uint32 Creature::GetVendorItemCurrentCount(VendorItem const* vItem)
 
     VendorItemCount* vCount = &*itr;
 
-    time_t ptime = time(nullptr);
+    time_t ptime = GetMap()->GetSyncTimeT();
 
     if (vCount->lastIncrementTime + vItem->incrtime <= ptime)
     {
@@ -2403,7 +2404,7 @@ uint32 Creature::UpdateVendorItemCurrentCount(VendorItem const* vItem, uint32 us
 
     VendorItemCount* vCount = &*itr;
 
-    time_t ptime = time(nullptr);
+    time_t ptime = GetMap()->GetSyncTimeT();
 
     if (vCount->lastIncrementTime + vItem->incrtime <= ptime)
     {

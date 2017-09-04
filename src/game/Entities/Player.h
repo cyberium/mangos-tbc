@@ -952,7 +952,7 @@ class Player : public Unit
 
         void SetSummonPoint(uint32 mapid, float x, float y, float z)
         {
-            m_summon_expire = time(nullptr) + MAX_PLAYER_SUMMON_DELAY;
+            m_summon_expire = GetMap()->GetSyncTimeT() + MAX_PLAYER_SUMMON_DELAY;
             m_summon_mapid = mapid;
             m_summon_x = x;
             m_summon_y = y;
@@ -962,7 +962,7 @@ class Player : public Unit
 
         bool Create(uint32 guidlow, const std::string& name, uint8 race, uint8 class_, uint8 gender, uint8 skin, uint8 face, uint8 hairStyle, uint8 hairColor, uint8 facialHair, uint8 outfitId);
 
-        void Update(uint32 update_diff, uint32 time) override;
+        void Update() override;
 
         static bool BuildEnumData(QueryResult* result,  WorldPacket& p_data);
 

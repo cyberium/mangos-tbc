@@ -1680,7 +1680,7 @@ void BattleGroundMgr::InitAutomaticArenaPointDistribution()
         if (!result) // if not set generate time for next wednesday
         {
             // generate time by config on first server launch
-            time_t curTime = time(nullptr);
+            time_t curTime = GlobalTimer::GetSystemTimeT();
             tm localTm = *localtime(&curTime);
             localTm.tm_hour = sWorld.getConfig(CONFIG_UINT32_QUEST_DAILY_RESET_HOUR);
             localTm.tm_min = 0;

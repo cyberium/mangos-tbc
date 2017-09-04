@@ -555,7 +555,7 @@ void CreatureLinkingHolder::ProcessSlave(CreatureLinkingEvent eventType, Creatur
             if (flag & FLAG_RESPAWN_ON_RESPAWN)
             {
                 // Additional check to prevent endless loops (in case whole group respawns on first respawn)
-                if (!pSlave->isAlive() && pSlave->GetRespawnTime() > time(nullptr))
+                if (!pSlave->isAlive() && pSlave->GetRespawnTime() > GlobalTimer::GetSystemTimeT())
                     pSlave->Respawn();
             }
             else if (flag & FLAG_DESPAWN_ON_RESPAWN && pSlave->isAlive())
@@ -626,7 +626,7 @@ bool CreatureLinkingHolder::IsSlaveInRangeOfBoss(Creature const* pBoss, float sX
 bool CreatureLinkingHolder::IsRespawnReady(uint32 dbLowGuid, Map* _map) const
 {
     time_t respawnTime = _map->GetPersistentState()->GetCreatureRespawnTime(dbLowGuid);
-    return (!respawnTime || respawnTime <= time(nullptr)) && CanSpawn(dbLowGuid, _map, nullptr, 0.0f, 0.0f);
+    return (!respawnTime || respawnTime <= GlobalTimer::GetSystemTimeT()) && CanSpawn(dbLowGuid, _map, nullptr, 0.0f, 0.0f);
 }
 
 // Function to check if a passive spawning condition is met

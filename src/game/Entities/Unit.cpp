@@ -420,10 +420,12 @@ Unit::~Unit()
     MANGOS_ASSERT(m_deletedHolders.size() == 0);
 }
 
-void Unit::Update(uint32 update_diff, uint32 p_time)
+void Unit::Update()
 {
     if (!IsInWorld())
         return;
+
+    uint32 updateDiff = GetMap()->GetSyncUpdateDiff();
 
     /*if(p_time > m_AurasCheck)
     {
@@ -435,20 +437,20 @@ void Unit::Update(uint32 update_diff, uint32 p_time)
     // WARNING! Order of execution here is important, do not change.
     // Spells must be processed with event system BEFORE they go to _UpdateSpells.
     // Or else we may have some SPELL_STATE_FINISHED spells stalled in pointers, that is bad.
-    UpdateCooldowns(GetMap()->GetCurrentClockTime());
+    UpdateCooldowns(GetMap()->GetSyncTime());
     m_spellUpdateHappening = true;
-    m_Events.Update(update_diff);
-    _UpdateSpells(update_diff);
+    m_Events.Update(updateDiff);
+    _UpdateSpells(updateDiff);
     m_spellUpdateHappening = false;
 
     CleanupDeletedAuras();
 
     if (m_lastManaUseTimer)
     {
-        if (update_diff >= m_lastManaUseTimer)
+        if (updateDiff >= m_lastManaUseTimer)
             m_lastManaUseTimer = 0;
         else
-            m_lastManaUseTimer -= update_diff;
+            m_lastManaUseTimer -= updateDiff;
     }
 
     if (!CanHaveThreatList() && isInCombat())
@@ -460,31 +462,31 @@ void Unit::Update(uint32 update_diff, uint32 p_time)
         if (getHostileRefManager().isEmpty())
         {
             // m_CombatTimer set at aura start and it will be freeze until aura removing
-            if (m_CombatTimer <= update_diff)
+            if (m_CombatTimer <= updateDiff)
                 CombatStop();
             else
-                m_CombatTimer -= update_diff;
+                m_CombatTimer -= updateDiff;
         }
     }
 
     if (uint32 base_att = getAttackTimer(BASE_ATTACK))
     {
-        setAttackTimer(BASE_ATTACK, (update_diff >= base_att ? 0 : base_att - update_diff));
+        setAttackTimer(BASE_ATTACK, (updateDiff >= base_att ? 0 : base_att - updateDiff));
     }
 
     if (uint32 base_att = getAttackTimer(OFF_ATTACK))
     {
-        setAttackTimer(OFF_ATTACK, (update_diff >= base_att ? 0 : base_att - update_diff));
+        setAttackTimer(OFF_ATTACK, (updateDiff >= base_att ? 0 : base_att - updateDiff));
     }
 
     // update abilities available only for fraction of time
-    UpdateReactives(update_diff);
+    UpdateReactives(updateDiff);
 
-    UpdateSplineMovement(p_time);
-    i_motionMaster.UpdateMotion(p_time);
+    UpdateSplineMovement(updateDiff);
+    i_motionMaster.UpdateMotion(updateDiff);
 
     if (AI() && isAlive())
-        AI()->UpdateAI(p_time);   // AI not react good at real update delays (while freeze in non-active part of map)
+        AI()->UpdateAI(updateDiff);   // AI not react good at real update delays (while freeze in non-active part of map)
 
     if (isAlive())
     {
@@ -10756,7 +10758,7 @@ bool Unit::TakeCharmOf(Unit* charmed)
                     // just to enable stat window
                     charmInfo->SetPetNumber(sObjectMgr.GeneratePetNumber(), true);
                     // if charmed two demons the same session, the 2nd gets the 1st one's name
-                    charmedCreature->SetUInt32Value(UNIT_FIELD_PET_NAME_TIMESTAMP, uint32(time(nullptr)));
+                    charmedCreature->SetUInt32Value(UNIT_FIELD_PET_NAME_TIMESTAMP, uint32(GetMap()->GetSyncTimeT()));
                 }
             }
         }

@@ -178,7 +178,7 @@ void AuctionHouseMgr::SendAuctionSalePendingMail(AuctionEntry* auction)
         std::ostringstream msgAuctionSalePendingBody;
         uint32 auctionCut = auction->GetAuctionCut();
 
-        time_t distrTime = time(nullptr) + HOUR;
+        time_t distrTime = GlobalTimer::GetSystemTimeT() + HOUR;
 
         msgAuctionSalePendingBody.width(16);
         msgAuctionSalePendingBody << std::right << std::hex << auction->bidder;
@@ -868,7 +868,7 @@ AuctionEntry* AuctionHouseObject::AddAuction(AuctionHouseEntry const* auctionHou
     AH->bidder = 0;
     AH->bid = 0;
     AH->buyout = buyout;
-    AH->expireTime = time(nullptr) + auction_time;
+    AH->expireTime = GlobalTimer::GetSystemTimeT() + auction_time;
     AH->deposit = deposit;
     AH->auctionHouseEntry = auctionHouseEntry;
 
@@ -923,7 +923,7 @@ bool AuctionEntry::BuildAuctionInfo(WorldPacket& data) const
     data << uint32(startbid);                               // Auction->startbid (not sure if useful)
     data << uint32(bid ? GetAuctionOutBid() : 0);           // minimal outbid
     data << uint32(buyout);                                 // auction->buyout
-    data << uint32((expireTime - time(nullptr))*IN_MILLISECONDS); // time left
+    data << uint32((expireTime - GlobalTimer::GetSystemTimeT())*IN_MILLISECONDS); // time left
     data << ObjectGuid(HIGHGUID_PLAYER, bidder);            // auction->bidder current
     data << uint32(bid);                                    // current bid
     return true;

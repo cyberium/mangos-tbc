@@ -94,7 +94,7 @@ bool Group::Create(ObjectGuid guid, const char* name)
 {
     m_leaderGuid = guid;
     m_leaderName = name;
-    m_leaderLastOnline = time(nullptr);
+    m_leaderLastOnline = GlobalTimer::GetSystemTimeT();
 
     m_groupType  = isBGGroup() ? GROUPTYPE_RAID : GROUPTYPE_NORMAL;
 
@@ -157,7 +157,7 @@ bool Group::LoadGroupFromDB(Field* fields)
     if (!sObjectMgr.GetPlayerNameByGUID(m_leaderGuid, m_leaderName))
         return false;
 
-    m_leaderLastOnline = time(nullptr);
+    m_leaderLastOnline = GlobalTimer::GetSystemTimeT();
 
     m_groupType  = fields[13].GetBool() ? GROUPTYPE_RAID : GROUPTYPE_NORMAL;
 
@@ -617,7 +617,7 @@ void Group::UpdatePlayerOnlineStatus(Player* player, bool online /*= true*/)
         UpdatePlayerOutOfRange(player);
     }
     else if (IsLeader(guid))
-        m_leaderLastOnline = time(nullptr);
+        m_leaderLastOnline = GlobalTimer::GetSystemTimeT();
 }
 
 void Group::UpdateOfflineLeader(time_t time, uint32 delay)
@@ -913,7 +913,7 @@ void Group::_setLeader(ObjectGuid guid)
     _updateLeaderFlag(true);
     m_leaderGuid = slot->guid;
     m_leaderName = slot->name;
-    m_leaderLastOnline = time(nullptr);
+    m_leaderLastOnline = GlobalTimer::GetSystemTimeT();
     _updateLeaderFlag();
 }
 

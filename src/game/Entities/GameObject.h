@@ -595,7 +595,7 @@ class GameObject : public WorldObject
 
         bool Create(uint32 guidlow, uint32 name_id, Map* map, float x, float y, float z, float ang,
                     float rotation0 = 0.0f, float rotation1 = 0.0f, float rotation2 = 0.0f, float rotation3 = 0.0f, uint32 animprogress = GO_ANIMPROGRESS_DEFAULT, GOState go_state = GO_STATE_READY);
-        void Update(uint32 update_diff, uint32 p_time) override;
+        void Update() override;
         GameObjectInfo const* GetGOInfo() const;
 
         bool IsTransport() const;
@@ -627,7 +627,7 @@ class GameObject : public WorldObject
         time_t GetRespawnTime() const { return m_respawnTime; }
         time_t GetRespawnTimeEx() const
         {
-            time_t now = time(nullptr);
+            time_t now = GetMap()->GetSyncTimeT();
             if (m_respawnTime > now)
                 return m_respawnTime;
             else
@@ -636,7 +636,7 @@ class GameObject : public WorldObject
 
         void SetRespawnTime(time_t respawn)
         {
-            m_respawnTime = respawn > 0 ? time(nullptr) + respawn : 0;
+            m_respawnTime = respawn > 0 ? GetMap()->GetSyncTimeT() + respawn : 0;
             m_respawnDelayTime = respawn > 0 ? uint32(respawn) : 0;
         }
         void Respawn();

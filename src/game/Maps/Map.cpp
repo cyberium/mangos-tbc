@@ -63,11 +63,6 @@ Map::~Map()
     m_weatherSystem = nullptr;
 }
 
-TimePoint Map::GetCurrentClockTime()
-{
-    return World::GetCurrentClockTime();
-}
-
 void Map::LoadMapAndVMap(int gx, int gy)
 {
     if (m_bLoadedGrids[gx][gy])
@@ -450,7 +445,9 @@ bool Map::loaded(const GridPair& p) const
 
 void Map::Update(const uint32& t_diff)
 {
-    m_dyn_tree.update(t_diff);
+    m_mapTimer.Update();
+
+    m_dyn_tree.update(m_mapTimer.GetSyncUpdateDiff());
 
     /// update worldsessions for existing players
     for (m_mapRefIter = m_mapRefManager.begin(); m_mapRefIter != m_mapRefManager.end(); ++m_mapRefIter)
@@ -471,8 +468,7 @@ void Map::Update(const uint32& t_diff)
         Player* plr = m_mapRefIter->getSource();
         if (plr && plr->IsInWorld())
         {
-            WorldObject::UpdateHelper helper(plr);
-            helper.Update(t_diff);
+            plr->Update();
         }
     }
 

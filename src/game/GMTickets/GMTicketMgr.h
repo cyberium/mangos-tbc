@@ -62,7 +62,7 @@ class GMTicket
         void SetText(const char* text)
         {
             m_text = text ? text : "";
-            m_lastUpdate = time(nullptr);
+            m_lastUpdate = GlobalTimer::GetSystemTimeT();
 
             std::string escapedString = m_text;
             CharacterDatabase.escape_string(escapedString);
@@ -72,7 +72,7 @@ class GMTicket
         void SetResponseText(const char* text)
         {
             m_responseText = text ? text : "";
-            m_lastUpdate = time(nullptr);
+            m_lastUpdate = GlobalTimer::GetSystemTimeT();
 
             std::string escapedString = m_responseText;
             CharacterDatabase.escape_string(escapedString);
@@ -164,7 +164,7 @@ class GMTicketMgr
                 m_GMTicketListByCreatingOrder.remove(&ticket);
             }
 
-            ticket.Init(guid, text, "", time(nullptr));
+            ticket.Init(guid, text, "", GlobalTimer::GetSystemTimeT());
             ticket.SaveToDB();
             m_GMTicketListByCreatingOrder.push_back(&ticket);
         }

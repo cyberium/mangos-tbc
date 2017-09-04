@@ -4900,7 +4900,7 @@ void ObjectMgr::LoadGossipTextLocales()
 /// @param serverUp true if the server is already running, false when the server is started
 void ObjectMgr::ReturnOrDeleteOldMails(bool serverUp)
 {
-    time_t basetime = time(nullptr);
+    time_t basetime = GlobalTimer::GetSystemTimeT();
     DEBUG_LOG("Returning mails current time: hour: %d, minute: %d, second: %d ", localtime(&basetime)->tm_hour, localtime(&basetime)->tm_min, localtime(&basetime)->tm_sec);
     // delete all old mails without item and without body immediately, if starting server
     if (!serverUp)

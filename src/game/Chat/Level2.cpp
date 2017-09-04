@@ -90,7 +90,7 @@ bool ChatHandler::HandleMuteCommand(char* args)
     if (HasLowerSecurity(target, target_guid, true))
         return false;
 
-    time_t mutetime = time(nullptr) + notspeaktime * 60;
+    time_t mutetime = GlobalTimer::GetSystemTimeT() + notspeaktime * 60;
 
     if (target)
         target->GetSession()->m_muteTime = mutetime;
@@ -874,7 +874,7 @@ bool ChatHandler::HandleGameObjectTargetCommand(char* args)
 
     if (target)
     {
-        time_t curRespawnDelay = target->GetRespawnTimeEx() - time(nullptr);
+        time_t curRespawnDelay = target->GetRespawnTimeEx() - GlobalTimer::GetSystemTimeT();
         if (curRespawnDelay < 0)
             curRespawnDelay = 0;
 
@@ -3639,8 +3639,8 @@ bool ChatHandler::HandleEventInfoCommand(char* args)
     std::string endTimeStr = TimeToTimestampStr(eventData.end);
 
     uint32 delay = sGameEventMgr.NextCheck(event_id);
-    time_t nextTime = time(nullptr) + delay;
-    std::string nextStr = nextTime >= eventData.start && nextTime < eventData.end ? TimeToTimestampStr(time(nullptr) + delay) : "-";
+    time_t nextTime = GlobalTimer::GetSystemTimeT() + delay;
+    std::string nextStr = nextTime >= eventData.start && nextTime < eventData.end ? TimeToTimestampStr(GlobalTimer::GetSystemTimeT() + delay) : "-";
 
     std::string occurenceStr = secsToTimeString(eventData.occurence * MINUTE);
     std::string lengthStr = secsToTimeString(eventData.length * MINUTE);

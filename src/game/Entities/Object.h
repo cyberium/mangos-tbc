@@ -26,6 +26,7 @@
 #include "Entities/ObjectGuid.h"
 #include "Globals/SharedDefines.h"
 #include "Camera.h"
+#include "Timer.h"
 
 #include <set>
 
@@ -85,21 +86,17 @@ struct SpellEntry;
 typedef std::unordered_map<Player*, UpdateData> UpdateDataMapType;
 
 // cooldown system
-typedef std::chrono::system_clock Clock;
-typedef std::chrono::time_point<std::chrono::system_clock, std::chrono::milliseconds> TimePoint;
-
 class CooldownData
 {
     friend class CooldownContainer;
 public:
-    CooldownData(TimePoint clockNow, uint32 spellId, uint32 duration, uint32 spellCategory, uint32 categoryDuration, uint32 itemId = 0, bool isPermanent = false) :
+    CooldownData(uint32 spellId, TimePoint const& spellExpireTime, uint32 spellCategory, TimePoint const& catExpireTime, uint32 itemId = 0, bool isPermanent = false) :
         m_spellId(spellId),
-        m_expireTime(duration ? std::chrono::milliseconds(duration) + clockNow : TimePoint()),
+        m_expireTime(spellExpireTime),
         m_category(spellCategory),
-        m_catExpireTime(spellCategory && categoryDuration ? std::chrono::milliseconds(categoryDuration) + clockNow : TimePoint()),
+        m_catExpireTime(catExpireTime),
         m_typePermanent(isPermanent),
-        m_itemId(itemId),
-        m_expireLegacy(time(nullptr) + duration / IN_MILLISECONDS)
+        m_itemId(itemId)
     {}
 
     // return false if permanent
@@ -159,7 +156,6 @@ private:
     TimePoint         m_catExpireTime;
     bool              m_typePermanent;
     uint32            m_itemId;
-    time_t            m_expireLegacy;
 };
 
 typedef std::unique_ptr<CooldownData> CooldownDataUPTR;
@@ -191,10 +187,10 @@ public:
         }
     }
 
-    bool AddCooldown(TimePoint clockNow, uint32 spellId, uint32 duration, uint32 spellCategory = 0, uint32 categoryDuration = 0, uint32 itemId = 0, bool onHold = false)
+    bool AddCooldown(uint32 spellId, TimePoint const& spellExpireTime, uint32 spellCategory = 0, TimePoint const& catExpireTime = TimePoint(), uint32 itemId = 0, bool onHold = false)
     {
-        auto resultItr = m_spellIdMap.emplace(spellId, std::unique_ptr<CooldownData>(new CooldownData(clockNow, spellId, duration, spellCategory, categoryDuration, itemId, onHold)));
-        if (resultItr.second && spellCategory && categoryDuration)
+        auto resultItr = m_spellIdMap.emplace(spellId, std::unique_ptr<CooldownData>(new CooldownData(spellId, spellExpireTime, spellCategory, catExpireTime, itemId, onHold)));
+        if (resultItr.second && spellCategory && catExpireTime != TimePoint())
             m_categoryMap.emplace(spellCategory, resultItr.first);
 
         return resultItr.second;
@@ -595,31 +591,9 @@ class WorldObject : public Object
         friend struct WorldObjectChangeAccumulator;
 
     public:
-
-        // class is used to manipulate with WorldUpdateCounter
-        // it is needed in order to get time diff between two object's Update() calls
-        class UpdateHelper
-        {
-            public:
-                explicit UpdateHelper(WorldObject* obj) : m_obj(obj) {}
-                ~UpdateHelper() { }
-
-                void Update(uint32 time_diff)
-                {
-                    m_obj->Update(m_obj->m_updateTracker.timeElapsed(), time_diff);
-                    m_obj->m_updateTracker.Reset();
-                }
-
-            private:
-                UpdateHelper(const UpdateHelper&);
-                UpdateHelper& operator=(const UpdateHelper&);
-
-                WorldObject* const m_obj;
-        };
-
         virtual ~WorldObject() {}
 
-        virtual void Update(uint32 /*update_diff*/, uint32 /*time_diff*/) {}
+        virtual void Update() {}
 
         void _Create(uint32 guidlow, HighGuid guidhigh);
 

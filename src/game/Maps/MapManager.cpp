@@ -177,8 +177,7 @@ void MapManager::Update(uint32 diff)
 
     for (TransportSet::iterator iter = m_Transports.begin(); iter != m_Transports.end(); ++iter)
     {
-        WorldObject::UpdateHelper helper((*iter));
-        helper.Update((uint32)i_timer.GetCurrent());
+        (*iter)->Update();
     }
 
     // remove all maps which can be unloaded

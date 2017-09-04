@@ -333,7 +333,7 @@ Aura::Aura(SpellEntry const* spellproto, SpellEffectIndex eff, int32* currentBas
     m_currentBasePoints = currentBasePoints ? *currentBasePoints : spellproto->CalculateSimpleValue(eff);
 
     m_positive = IsPositiveAuraEffect(spellproto, m_effIndex, caster, target);
-    m_applyTime = time(nullptr);
+    m_applyTime = target->GetMap()->GetSyncTimeT();
 
     int32 damage;
     if (!caster)
@@ -6764,7 +6764,7 @@ SpellAuraHolder::SpellAuraHolder(SpellEntry const* spellproto, Unit* target, Wor
         m_casterGuid = caster->GetObjectGuid();
     }
 
-    m_applyTime      = time(nullptr);
+    m_applyTime      = target->GetMap()->GetSyncTimeT();
     m_isPassive      = IsPassiveSpell(spellproto);
     m_isDeathPersist = IsDeathPersistentSpell(spellproto);
     m_trackedAuraType = IsSingleTargetSpell(spellproto) ? TRACK_AURA_TYPE_SINGLE_TARGET : TRACK_AURA_TYPE_NOT_TRACKED;

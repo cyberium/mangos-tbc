@@ -965,7 +965,7 @@ void Spell::EffectDummy(SpellEffectIndex eff_idx)
                         return;
                     }
 
-                    pGameObj->SetRespawnTime(creatureTarget->GetRespawnTime() - time(nullptr));
+                    pGameObj->SetRespawnTime(creatureTarget->GetRespawnTime() - map->GetSyncTimeT());
                     pGameObj->SetOwnerGuid(m_caster->GetObjectGuid());
                     pGameObj->SetUInt32Value(GAMEOBJECT_LEVEL, m_caster->getLevel());
                     pGameObj->SetSpellId(m_spellInfo->Id);
@@ -4774,7 +4774,7 @@ void Spell::EffectSummonPet(SpellEffectIndex eff_idx)
     NewSummon->GetCharmInfo()->SetReactState(REACT_DEFENSIVE);
     NewSummon->SetOwnerGuid(m_caster->GetObjectGuid());
     NewSummon->setFaction(m_caster->getFaction());
-    NewSummon->SetUInt32Value(UNIT_FIELD_PET_NAME_TIMESTAMP, uint32(time(nullptr)));
+    NewSummon->SetUInt32Value(UNIT_FIELD_PET_NAME_TIMESTAMP, uint32(map->GetSyncTimeT()));
     NewSummon->SetUInt32Value(UNIT_CREATED_BY_SPELL, m_spellInfo->Id);
 
     NewSummon->InitStatsForLevel(level);

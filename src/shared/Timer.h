@@ -21,6 +21,9 @@
 
 #include "Common.h"
 
+typedef std::chrono::system_clock Clock;
+typedef std::chrono::time_point<Clock, std::chrono::milliseconds> TimePoint;
+
 class WorldTimer
 {
     private:
@@ -133,6 +136,36 @@ struct ShortTimeTracker
 
     private:
         int32 i_expiryTime;
+};
+
+class GlobalTimer
+{
+    public:
+        GlobalTimer() : m_time(GetSystemTime()), m_prevTime(GetSystemTime()) {}
+
+        // Get system time with millisecond precision
+        static TimePoint GetSystemTime() { return std::chrono::time_point_cast<std::chrono::milliseconds>(Clock::now()); }
+        static time_t GetSystemTimeT() { return Clock::to_time_t(GetSystemTime()); }
+
+        // Get synchronized time
+        TimePoint const& GetSyncTime() { return m_time; }
+
+        // Get synchronized last update time diff
+        uint32 GetSyncUpdateDiff() { return m_diffTime; }
+
+        // Update this timer
+        void Update()
+        {
+            m_prevTime = m_time;
+            m_time = GetSystemTime();
+            auto elapsed = m_time - m_prevTime;
+            m_diffTime = uint32(elapsed.count());
+        }
+
+    private:
+        TimePoint m_time;
+        TimePoint m_prevTime;
+        uint32 m_diffTime;
 };
 
 #endif

@@ -200,13 +200,16 @@ bool GameObject::Create(uint32 guidlow, uint32 name_id, Map* map, float x, float
     return true;
 }
 
-void GameObject::Update(uint32 update_diff, uint32 p_time)
+void GameObject::Update()
 {
     if (GetObjectGuid().IsMOTransport())
     {
         //((Transport*)this)->Update(p_time);
         return;
     }
+
+    uint32 updateDiff = GetMap()->GetSyncUpdateDiff();
+    time_t now = GetMap()->GetSyncTimeT();
 
     switch (m_lootState)
     {
@@ -219,14 +222,14 @@ void GameObject::Update(uint32 update_diff, uint32 p_time)
                     // Arming Time for GAMEOBJECT_TYPE_TRAP (6)
                     Unit* owner = GetOwner();
                     if (owner && owner->isInCombat())
-                        m_cooldownTime = time(nullptr) + GetGOInfo()->trap.startDelay;
+                        m_cooldownTime = GlobalTimer::GetSystemTimeT() + GetGOInfo()->trap.startDelay;
                     m_lootState = GO_READY;
                     break;
                 }
                 case GAMEOBJECT_TYPE_FISHINGNODE:           // Keep not ready for some delay
                 {
                     // fishing code (bobber ready)
-                    if (time(nullptr) > m_respawnTime - FISHING_BOBBER_READY_TIME)
+                    if (now > m_respawnTime - FISHING_BOBBER_READY_TIME)
                     {
                         // splash bobber (bobber ready now)
                         Unit* caster = GetOwner();
@@ -250,7 +253,7 @@ void GameObject::Update(uint32 update_diff, uint32 p_time)
                     {
                         if (m_reStockTimer != 0)
                         {
-                            if (m_reStockTimer <= time(nullptr))
+                            if (m_reStockTimer <= now)
                             {
                                 m_reStockTimer = 0;
                                 m_lootState = GO_READY;
@@ -276,7 +279,7 @@ void GameObject::Update(uint32 update_diff, uint32 p_time)
         {
             if (m_respawnTime > 0)                          // timer on
             {
-                if (m_respawnTime <= time(nullptr))            // timer expired
+                if (m_respawnTime <= now)            // timer expired
                 {
                     m_respawnTime = 0;
                     ClearAllUsesData();
@@ -331,7 +334,7 @@ void GameObject::Update(uint32 update_diff, uint32 p_time)
                 GameObjectInfo const* goInfo = GetGOInfo();
                 if (goInfo->type == GAMEOBJECT_TYPE_TRAP)   // traps
                 {
-                    if (m_cooldownTime >= time(nullptr))
+                    if (m_cooldownTime >= now)
                         return;
 
                     // FIXME: this is activation radius (in different casting radius that must be selected from spell data)
@@ -398,22 +401,22 @@ void GameObject::Update(uint32 update_diff, uint32 p_time)
             {
                 case GAMEOBJECT_TYPE_DOOR:
                 case GAMEOBJECT_TYPE_BUTTON:
-                    if (GetGOInfo()->GetAutoCloseTime() && (m_cooldownTime < time(nullptr)))
+                    if (GetGOInfo()->GetAutoCloseTime() && (m_cooldownTime < now))
                         ResetDoorOrButton();
                     break;
                 case GAMEOBJECT_TYPE_CHEST:
                     if (loot)
                     {
                         if (loot->IsChanged())
-                            m_despawnTimer = time(nullptr) + 5 * MINUTE; // TODO:: need to add a define?
-                        else if (m_despawnTimer != 0 && m_despawnTimer <= time(nullptr))
+                            m_despawnTimer = now + 5 * MINUTE; // TODO:: need to add a define?
+                        else if (m_despawnTimer != 0 && m_despawnTimer <= now)
                             m_lootState = GO_JUST_DEACTIVATED;
 
                         loot->Update();
                     }
                     break;
                 case GAMEOBJECT_TYPE_GOOBER:
-                    if (m_cooldownTime < time(nullptr))
+                    if (m_cooldownTime < now)
                     {
                         RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_IN_USE);
 
@@ -422,7 +425,7 @@ void GameObject::Update(uint32 update_diff, uint32 p_time)
                     }
                     break;
                 case GAMEOBJECT_TYPE_CAPTURE_POINT:
-                    m_captureTimer += p_time;
+                    m_captureTimer += updateDiff;
                     if (m_captureTimer >= 5000)
                     {
                         TickCapturePoint();
@@ -470,7 +473,7 @@ void GameObject::Update(uint32 update_diff, uint32 p_time)
                     m_despawnTimer = 0;
                     if (m_goInfo->chest.chestRestockTime)
                     {
-                        m_reStockTimer = time(nullptr) + m_goInfo->chest.chestRestockTime;
+                        m_reStockTimer = now + m_goInfo->chest.chestRestockTime;
                         m_lootState = GO_NOT_READY;
                         ForceValuesUpdateAtIndex(GAMEOBJECT_DYN_FLAGS);
                         return;
@@ -516,7 +519,7 @@ void GameObject::Update(uint32 update_diff, uint32 p_time)
             if (GameObjectData const* data = sObjectMgr.GetGOData(GetObjectGuid().GetCounter()))
                 m_respawnDelayTime = data->GetRandomRespawnTime();
 
-            m_respawnTime = m_spawnedByDefault ? time(nullptr) + m_respawnDelayTime : 0;
+            m_respawnTime = m_spawnedByDefault ? now + m_respawnDelayTime : 0;
 
             // if option not set then object will be saved at grid unload
             if (sWorld.getConfig(CONFIG_BOOL_SAVE_RESPAWN_TIME_IMMEDIATELY))
@@ -680,7 +683,7 @@ bool GameObject::LoadFromDB(uint32 guid, Map* map)
             m_respawnTime  = map->GetPersistentState()->GetGORespawnTime(GetGUIDLow());
 
             // ready to respawn
-            if (m_respawnTime && m_respawnTime <= time(nullptr))
+            if (m_respawnTime && m_respawnTime <= GlobalTimer::GetSystemTimeT())
             {
                 m_respawnTime = 0;
                 map->GetPersistentState()->SaveGORespawnTime(GetGUIDLow(), 0);
@@ -778,7 +781,7 @@ bool GameObject::IsTransport() const
 
 void GameObject::SaveRespawnTime()
 {
-    if (m_respawnTime > time(nullptr) && m_spawnedByDefault)
+    if (m_respawnTime > GetMap()->GetSyncTimeT() && m_spawnedByDefault)
         GetMap()->GetPersistentState()->SaveGORespawnTime(GetGUIDLow(), m_respawnTime);
 }
 
@@ -855,7 +858,7 @@ void GameObject::Respawn()
 {
     if (m_spawnedByDefault && m_respawnTime > 0)
     {
-        m_respawnTime = time(nullptr);
+        m_respawnTime = GetMap()->GetSyncTimeT();
         GetMap()->GetPersistentState()->SaveGORespawnTime(GetGUIDLow(), 0);
     }
 }
@@ -1053,7 +1056,7 @@ void GameObject::UseDoorOrButton(uint32 time_to_restore, bool alternative /* = f
     SwitchDoorOrButton(true, alternative);
     SetLootState(GO_ACTIVATED);
 
-    m_cooldownTime = time(nullptr) + time_to_restore;
+    m_cooldownTime = GetMap()->GetSyncTimeT() + time_to_restore;
 }
 
 void GameObject::SwitchDoorOrButton(bool activate, bool alternative /* = false */)
@@ -1174,7 +1177,7 @@ void GameObject::Use(Unit* user)
                 if (caster->CastSpell(user, goInfo->trap.spellId, TRIGGERED_OLD_TRIGGERED, nullptr, nullptr, GetObjectGuid()) != SPELL_CAST_OK)
                     return;
             // use template cooldown if provided
-            m_cooldownTime = time(nullptr) + (goInfo->trap.cooldown ? goInfo->trap.cooldown : uint32(4));
+            m_cooldownTime = GetMap()->GetSyncTimeT() + (goInfo->trap.cooldown ? goInfo->trap.cooldown : uint32(4));
 
             // count charges
             if (goInfo->trap.charges > 0)
@@ -1288,7 +1291,7 @@ void GameObject::Use(Unit* user)
             else
                 SetGoState(GO_STATE_ACTIVE);
 
-            m_cooldownTime = time(nullptr) + info->GetAutoCloseTime();
+            m_cooldownTime = GetMap()->GetSyncTimeT() + info->GetAutoCloseTime();
 
             if (user->GetTypeId() == TYPEID_PLAYER)
             {
