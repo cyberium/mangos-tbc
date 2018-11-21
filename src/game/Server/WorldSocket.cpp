@@ -60,7 +60,7 @@ WorldSocket::WorldSocket(boost::asio::io_service& service, std::function<void (S
 {
 }
 
-void WorldSocket::SendPacket(const WorldPacket& pct, bool immediate)
+void WorldSocket::SendPacket(const WorldPacket& pct)
 {
     if (IsClosed())
         return;
@@ -72,19 +72,24 @@ void WorldSocket::SendPacket(const WorldPacket& pct, bool immediate)
 
     header.cmd = pct.GetOpcode();
     EndianConvert(header.cmd);
+    char const* headerPtr = reinterpret_cast<const char*>(&header);
+    uint16 size = static_cast<uint16>(pct.size());
 
-    header.size = static_cast<uint16>(pct.size() + 2);
+    header.size = size + 2;
     EndianConvertReverse(header.size);
-
     m_crypt.EncryptSend(reinterpret_cast<uint8*>(&header), sizeof(header));
 
+    // Build an array of uint8 ready to be sent (TODO:: that step can be avoided by doing some rewrite on WorldPacket class)
+    MaNGOS::BytesContainerSPtr messageData = MaNGOS::BytesContainerSPtr(new MaNGOS::BytesContainer(headerPtr, headerPtr + sizeof(header)));
     if (pct.size() > 0)
-        Write(reinterpret_cast<const char*>(&header), sizeof(header), reinterpret_cast<const char*>(pct.contents()), pct.size());
-    else
-        Write(reinterpret_cast<const char*>(&header), sizeof(header));
+    {
+        messageData->reserve(size + sizeof(header));
+        char const* content = reinterpret_cast<char const*>(pct.contents());
+        messageData->insert(messageData->end(), content, content + size);
+    }
 
-    if (immediate)
-        ForceFlushOut();
+    // Send that array to socket code so it can send it over tcpip
+    Write(messageData);
 }
 
 bool WorldSocket::Open()
@@ -521,7 +526,7 @@ bool WorldSocket::HandlePing(WorldPacket& recvPacket)
 
     WorldPacket packet(SMSG_PONG, 4);
     packet << ping;
-    SendPacket(packet, true);
+    SendPacket(packet);
 
     return true;
 }

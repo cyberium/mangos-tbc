@@ -32,27 +32,22 @@
 
 namespace MaNGOS
 {
+    typedef std::vector<uint8> BytesContainer;
+    typedef std::shared_ptr<BytesContainer> BytesContainerSPtr;
+    typedef std::vector<BytesContainerSPtr> BytesContainerSPtrList;
+    typedef std::vector<boost::asio::const_buffer> SendingBuffer;
+
     class Socket : public std::enable_shared_from_this<Socket>
     {
         private:
-            // buffer timeout period, in milliseconds.  higher values decrease responsiveness
-            // ingame but increase bandwidth efficiency by reducing tcp overhead.
-            static const int BufferTimeout = 50;
-
-            enum class WriteState
-            {
-                Idle,       // no write operation is currently underway
-                Buffering,  // a write operation has been performed, and we are currently awaiting others before sending
-                Sending,    // a send operation is underway
-            };
+            // Write timeout period, in milliseconds. Client will be disconnected after that period
+            static const int WriteTimeout = 5000;
 
             enum class ReadState
             {
                 Idle,
                 Reading
             };
-
-            WriteState m_writeState;
             ReadState m_readState;
 
             boost::asio::ip::tcp::socket m_socket;
@@ -60,20 +55,18 @@ namespace MaNGOS
             std::function<void(Socket *)> m_closeHandler;
 
             std::unique_ptr<PacketBuffer> m_inBuffer;
-            std::unique_ptr<PacketBuffer> m_outBuffer;
-            std::unique_ptr<PacketBuffer> m_secondaryOutBuffer;
 
             std::mutex m_mutex;
             std::mutex m_closeMutex;
-            boost::asio::deadline_timer m_outBufferFlushTimer;
+            BytesContainerSPtrList m_messagesList[2];
+            SendingBuffer m_sendingBuffer;
+            uint8 m_activeBuffer;
+            boost::asio::deadline_timer m_writeTimer;
 
             void StartAsyncRead();
             void OnRead(const boost::system::error_code &error, size_t length);
 
-            void StartWriteFlushTimer();
-            void OnWriteComplete(const boost::system::error_code &error, size_t length);
-            void FlushOut();
-
+            void DoAsyncWrite();
             void OnError(const boost::system::error_code &error);
 
         protected:
@@ -85,8 +78,6 @@ namespace MaNGOS
             const uint8 *InPeak() const { return &m_inBuffer->m_buffer[m_inBuffer->m_readPosition]; }
 
             int ReadLengthRemaining() const { return m_inBuffer->ReadLengthRemaining(); }
-
-            void ForceFlushOut();
 
         public:
             Socket(boost::asio::io_service &service, std::function<void (Socket *)> closeHandler);
@@ -101,9 +92,8 @@ namespace MaNGOS
             bool Read(char *buffer, int length);
             void ReadSkip(int length) { m_inBuffer->Read(nullptr, length); }
 
-            void Write(const char *buffer, int length);
-            void Write(const char *header, int headerSize, const char* content, int contentSize);
-
+            void Write(BytesContainerSPtr& data);
+            void Write(const char* message, uint32 size);
             boost::asio::ip::tcp::socket &GetAsioSocket() { return m_socket; }
 
             const std::string &GetRemoteEndpoint() const { return m_remoteEndpoint; }

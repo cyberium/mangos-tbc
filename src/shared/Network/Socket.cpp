@@ -33,11 +33,15 @@
 namespace MaNGOS
 {
     Socket::Socket(boost::asio::io_service& service, std::function<void (Socket*)> closeHandler)
-        : m_writeState(WriteState::Idle), m_readState(ReadState::Idle), m_socket(service),
-          m_closeHandler(std::move(closeHandler)), m_outBufferFlushTimer(service), m_address("0.0.0.0") {}
+        : m_readState(ReadState::Idle), m_socket(service),
+          m_closeHandler(std::move(closeHandler)), m_address("0.0.0.0"),
+          m_activeBuffer(0), m_writeTimer(service) {}
 
     bool Socket::Open()
     {
+        // set tcp no delay preference (enable/disable Nagle algorithm)
+        m_socket.set_option(boost::asio::ip::tcp::no_delay(false));
+
         try
         {
             const_cast<std::string&>(m_address) = m_socket.remote_endpoint().address().to_string();
@@ -48,9 +52,6 @@ namespace MaNGOS
             sLog.outError("Socket::Open() failed to get remote address.  Error: %s", error.message().c_str());
             return false;
         }
-
-        m_outBuffer.reset(new PacketBuffer);
-        m_secondaryOutBuffer.reset(new PacketBuffer);
         m_inBuffer.reset(new PacketBuffer);
 
         StartAsyncRead();
@@ -165,140 +166,65 @@ namespace MaNGOS
         return true;
     }
 
-    void Socket::Write(const char* header, int headerSize, const char* content, int contentSize)
+    void Socket::Write(BytesContainerSPtr& data)
     {
         std::lock_guard<std::mutex> guard(m_mutex);
 
-        // get the correct buffer depending on the current writing state
-        PacketBuffer* outBuffer = m_writeState == WriteState::Sending ? m_secondaryOutBuffer.get() : m_outBuffer.get();
+        // move input data to the inactive buffer (^1 doing xor so the result will be 1 or 0)
+        m_messagesList[m_activeBuffer ^ 1].push_back(data);
 
-        // write the header
-        outBuffer->Write(header, headerSize);
-
-        // write the content
-        outBuffer->Write(content, contentSize);
-
-        // flush data if need
-        if (m_writeState == WriteState::Idle)
-            StartWriteFlushTimer();
+        if (m_sendingBuffer.empty())
+            DoAsyncWrite();
     }
 
-    void Socket::Write(const char* buffer, int length)
+    void Socket::Write(const char* message, uint32 size)
     {
-        std::lock_guard<std::mutex> guard(m_mutex);
-
-        // get the correct buffer depending on the current writing state
-        PacketBuffer* outBuffer = m_writeState == WriteState::Sending ? m_secondaryOutBuffer.get() : m_outBuffer.get();
-
-        // write the header
-        outBuffer->Write(buffer, length);
-
-        // flush data if need
-        if (m_writeState == WriteState::Idle)
-            StartWriteFlushTimer();
+        MaNGOS::BytesContainerSPtr messageData = MaNGOS::BytesContainerSPtr(new MaNGOS::BytesContainer(message, message + size));
+        Write(messageData);
     }
 
-// note that this function assumes that the socket mutex is locked
-    void Socket::StartWriteFlushTimer()
+    void Socket::DoAsyncWrite()
     {
-        if (m_writeState == WriteState::Buffering)
-            return;
+        m_activeBuffer ^= 1; // switch buffers
 
-        // if the socket is closed, silently fail
-        if (IsClosed())
-        {
-            m_writeState = WriteState::Idle;
-            return;
-        }
+        // fill sending buffer
+        for (const auto& data : m_messagesList[m_activeBuffer])
+            m_sendingBuffer.push_back(boost::asio::buffer(*data));
 
-        m_writeState = WriteState::Buffering;
-
+        // setting up an timer to protect against any timeout
+        m_writeTimer.expires_from_now(boost::posix_time::milliseconds(int(WriteTimeout)));
         std::shared_ptr<Socket> ptr = shared<Socket>();
-        m_outBufferFlushTimer.expires_from_now(boost::posix_time::milliseconds(int(BufferTimeout)));
-        m_outBufferFlushTimer.async_wait([ptr](const boost::system::error_code & error) { ptr->FlushOut(); });
-    }
-
-    void Socket::FlushOut()
-    {
-        // if the socket is closed, silently fail
-        if (IsClosed())
+        m_writeTimer.async_wait([ptr](const boost::system::error_code & error)
         {
-            m_writeState = WriteState::Idle;
-            return;
-        }
+            if (!error) {
+                // timeout error
+                ptr->OnError(error);
+            }
+        });
 
-        std::lock_guard<std::mutex> guard(m_mutex);
-
-        assert(m_writeState == WriteState::Buffering);
-
-        // at this point we are guarunteed that there is data to send in the primary buffer.  send it.
-        m_writeState = WriteState::Sending;
-
-        std::shared_ptr<Socket> ptr = shared<Socket>();
-        m_socket.async_write_some(boost::asio::buffer(m_outBuffer->m_buffer, m_outBuffer->m_writePosition),
-                                  make_custom_alloc_handler(m_allocator,
-        [ptr](const boost::system::error_code & error, size_t length) { ptr->OnWriteComplete(error, length); }));
-    }
-
-// if the write state is idle, this will do nothing, which is correct
-// if the write state is sending, this will do nothing, which is correct
-// if the write state is buffering, this will cancel the running timer, which will immediately trigger FlushOut()
-    void Socket::ForceFlushOut()
-    {
-        m_outBufferFlushTimer.cancel();
-    }
-
-    void Socket::OnWriteComplete(const boost::system::error_code& error, size_t length)
-    {
-        // we must check this before locking the mutex because the connection will be closed,
-        // which leads to a locked mutex being destroyed.  not good!
-        if (error)
+        // send asynchronously data in m_messageList[m_activeBuffer]
+        boost::asio::async_write(m_socket, m_sendingBuffer,
+            [this, self = shared_from_this()](const boost::system::error_code& error, size_t bytes_transferred)
         {
-            OnError(error);
-            return;
-        }
+            // cancel timeout check
+            m_writeTimer.cancel();
+            std::lock_guard<std::mutex> guard(m_mutex);
 
-        if (IsClosed())
-        {
-            m_writeState = WriteState::Idle;
-            return;
-        }
+            // we can clear the message list everything is sent
+            m_messagesList[m_activeBuffer].clear();
+            m_sendingBuffer.clear();
 
-        std::lock_guard<std::mutex> guard(m_mutex);
-
-        assert(m_writeState == WriteState::Sending);
-        assert(length <= m_outBuffer->m_writePosition);
-
-        // if there is data left to write, move it to the start of the buffer
-        if (length < m_outBuffer->m_writePosition)
-        {
-            memcpy(&(m_outBuffer->m_buffer[0]), &(m_outBuffer->m_buffer[length]), (m_outBuffer->m_writePosition - length) * sizeof(m_outBuffer->m_buffer[0]));
-            m_outBuffer->m_writePosition -= length;
-        }
-        // if not, reset the write pointer
-        else
-            m_outBuffer->m_writePosition = 0;
-
-        // if there is data in the secondary buffer, append it to the primary buffer
-        if (m_secondaryOutBuffer->m_writePosition > 0)
-        {
-            // do we have enough space? if not, resize
-            if (m_outBuffer->m_buffer.size() < (m_outBuffer->m_writePosition + m_secondaryOutBuffer->m_writePosition))
-                m_outBuffer->m_buffer.resize(m_outBuffer->m_writePosition + m_secondaryOutBuffer->m_writePosition);
-
-            memcpy(&(m_outBuffer->m_buffer[m_outBuffer->m_writePosition]), &(m_secondaryOutBuffer->m_buffer[0]), (m_secondaryOutBuffer->m_writePosition) * sizeof(m_secondaryOutBuffer->m_buffer[0]));
-
-            m_outBuffer->m_writePosition += m_secondaryOutBuffer->m_writePosition;
-            m_secondaryOutBuffer->m_writePosition = 0;
-        }
-
-        std::shared_ptr<Socket> ptr = shared<Socket>();
-        // if there is any data to write, do so immediately
-        if (m_outBuffer->m_writePosition > 0)
-            m_socket.async_write_some(boost::asio::buffer(m_outBuffer->m_buffer, m_outBuffer->m_writePosition),
-                                      make_custom_alloc_handler(m_allocator,
-            [ptr](const boost::system::error_code & error, size_t length) { ptr->OnWriteComplete(error, length);}));
-        else
-            m_writeState = WriteState::Idle;
+            if (!error)
+            {
+                // check if there is some new data to send
+                if (!m_messagesList[m_activeBuffer ^ 1].empty())
+                    DoAsyncWrite();
+            }
+            else
+            {
+                // error while sending the data
+                OnError(error);
+            }
+        });
     }
 }
