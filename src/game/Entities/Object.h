@@ -565,6 +565,7 @@ class Object
         void SetItsNewObject(bool enable) { m_itsNewObject = enable; }
 
         Loot* m_loot;
+        LootBaseUPtr m_loot2;
 
         inline bool IsPlayer() const { return GetTypeId() == TYPEID_PLAYER; }
         inline bool IsCreature() const { return GetTypeId() == TYPEID_UNIT; }

@@ -63,6 +63,7 @@ class LootTemplate::LootGroup                               // A set of loot def
         bool HasQuestDropForPlayer(Player const* player) const;
         // The same for active quests of the player
         void Process(Loot& loot, Player const* lootOwner) const; // Rolls an item from the group (if any) and adds the item to the loot
+        void Process(LootBase& loot) const;
         float RawTotalChance() const;                       // Overall chance for the group (without equal chanced items)
         float TotalChance() const;                          // Overall chance for the group
 
@@ -73,6 +74,7 @@ class LootTemplate::LootGroup                               // A set of loot def
         LootStoreItemList EqualChanced;                     // Zero chances - every entry takes the same chance
 
         LootStoreItem const* Roll(Loot const& loot, Player const* lootOwner) const; // Rolls an item from the group, returns nullptr if all miss their chances
+        LootStoreItem const* Roll(LootBase& loot) const;
 };
 
 // Remove all data and free all memory
@@ -364,6 +366,8 @@ LootItem::LootItem(LootStoreItem const& li, uint32 _lootSlot, uint32 threshold)
     isBlocked         = false;
     currentLooterPass = false;
     isReleased        = false;
+    pickedUp          = false;
+    slotType          = LOOT_SLOT_VIEW;
 }
 
 LootItem::LootItem(uint32 _itemId, uint32 _count, uint32 _randomSuffix, int32 _randomPropertyId, uint32 _lootSlot)
@@ -392,8 +396,46 @@ LootItem::LootItem(uint32 _itemId, uint32 _count, uint32 _randomSuffix, int32 _r
     isUnderThreshold  = false;
     currentLooterPass = false;
     isReleased        = false;
+    pickedUp          = false;
+    slotType          = LOOT_SLOT_VIEW;
 }
 
+
+LootItem::LootItem(LootStoreItem const& li, uint32 _lootSlot)
+{
+    if (li.needs_quest)
+        lootItemType = LOOTITEM_TYPE_QUEST;
+    else if (li.conditionId)
+        lootItemType = LOOTITEM_TYPE_CONDITIONNAL;
+    else
+        lootItemType = LOOTITEM_TYPE_NORMAL;
+
+    itemProto = ObjectMgr::GetItemPrototype(li.itemid);
+    if (itemProto)
+    {
+        freeForAll = (itemProto->Flags & ITEM_FLAG_MULTI_DROP) != 0;
+        displayID = itemProto->DisplayInfoID;
+    }
+    else
+    {
+        sLog.outError("LootItem::LootItem()> item ID(%u) have no prototype!", li.itemid); // maybe i must make an assert here
+        freeForAll = false;
+        displayID = 0;
+    }
+
+    itemId            = li.itemid;
+    conditionId       = li.conditionId;
+    lootSlot          = _lootSlot;
+    count             = urand(li.mincountOrRef, li.maxcount);     // constructor called for mincountOrRef > 0 only
+    randomSuffix      = GenerateEnchSuffixFactor(itemId);
+    randomPropertyId  = Item::GenerateItemRandomPropertyId(itemId);
+    isBlocked         = false;
+    currentLooterPass = false;
+    isReleased        = false;
+    pickedUp          = false;
+    isUnderThreshold  = false;
+    slotType          = LOOT_SLOT_VIEW;
+}
 
 // Basic checks for player/item compatibility - if false no chance to see the item in the loot
 bool LootItem::AllowedForPlayer(Player const* player, WorldObject const* lootTarget) const
@@ -431,6 +473,38 @@ bool LootItem::AllowedForPlayer(Player const* player, WorldObject const* lootTar
 
 LootSlotType LootItem::GetSlotTypeForSharedLoot(Player const* player, Loot const* loot) const
 {
+    // special case with master loot can be able to see conditional item even if he don't have prerequisite
+    if (loot->m_lootMethod == MASTER_LOOT && lootItemType == LOOTITEM_TYPE_CONDITIONNAL)
+    {
+        if (isUnderThreshold)
+        {
+            if (!IsAllowed(player, loot))
+                return MAX_LOOT_SLOT_TYPE;
+
+            if (isBlocked)
+                return LOOT_SLOT_VIEW;
+
+            if (isReleased || currentLooterPass || loot->m_currentLooterGuid == player->GetObjectGuid())
+                return LOOT_SLOT_OWNER;
+
+            return MAX_LOOT_SLOT_TYPE;
+        }
+
+        if (player->GetObjectGuid() == loot->m_masterOwnerGuid && allowedGuid.size() > 0)
+            return LOOT_SLOT_MASTER;
+
+        if (!IsAllowed(player, loot))
+            return MAX_LOOT_SLOT_TYPE;
+
+        if (isReleased || currentLooterPass || loot->m_currentLooterGuid == player->GetObjectGuid())
+            return LOOT_SLOT_OWNER;
+
+        if (sWorld.getConfig(CONFIG_BOOL_CORPSE_ALLOW_ALL_ITEMS_SHOW_IN_MASTER_LOOT))
+            return LOOT_SLOT_VIEW;
+
+        return MAX_LOOT_SLOT_TYPE;
+    }
+
     // Check if still have right to pick this item
     if (!IsAllowed(player, loot))
         return MAX_LOOT_SLOT_TYPE;
@@ -487,6 +561,9 @@ LootSlotType LootItem::GetSlotTypeForSharedLoot(Player const* player, Loot const
                 if (loot->m_isChest)
                     return LOOT_SLOT_OWNER;
 
+                if (isBlocked)
+                    return LOOT_SLOT_VIEW;
+
                 if (isReleased || currentLooterPass || player->GetObjectGuid() == loot->m_currentLooterGuid)
                     return LOOT_SLOT_OWNER;
 
@@ -522,12 +599,45 @@ LootSlotType LootItem::GetSlotTypeForSharedLoot(Player const* player, Loot const
 bool LootItem::IsAllowed(Player const* player, Loot const* loot) const
 {
     if (!loot->m_isChest)
-        return allowedGuid.find(player->GetObjectGuid()) != allowedGuid.end();
+    {
+        if (loot->m_lootMethod != NOT_GROUP_TYPE_LOOT)
+            return allowedGuid.find(player->GetObjectGuid()) != allowedGuid.end();
+
+        if (allowedGuid.empty())
+            return AllowedForPlayer(player, loot->GetLootTarget());
+
+        return false;
+    }
 
     if (allowedGuid.empty() || (freeForAll && allowedGuid.find(player->GetObjectGuid()) == allowedGuid.end()))
         return AllowedForPlayer(player, loot->GetLootTarget());
 
     return false;
+}
+
+/*
+uint32       itemId;
+uint32       randomSuffix;
+int32        randomPropertyId;
+uint32       displayID;
+LootItemType lootItemType;
+GuidSet      allowedGuid;                                       // player's that have right to loot this item
+uint32       lootSlot;                                          // the slot number will be send to client
+uint16       conditionId : 16;                            // allow compiler pack structure
+uint8        count : 8;
+bool         isBlocked : 1;
+bool         freeForAll : 1;                             // free for all
+bool         isUnderThreshold : 1;
+bool         currentLooterPass : 1;
+bool         isReleased : 1;                             // true if item is released by looter or by roll system
+bool         pickedUp : 1;*/
+
+std::string LootItem::ToString() const
+{
+    std::stringstream ss;
+
+    ss << "id(" << itemId << "), slot(" << lootSlot << "), allowed(" << allowedGuid.size() << "), condition(" << conditionId << ")";
+    return ss.str();
 }
 
 //
@@ -899,6 +1009,8 @@ bool Loot::FillLoot(uint32 loot_id, LootStore const& store, Player* lootOwner, b
     Player* masterLooter = nullptr;
     if (m_lootMethod == MASTER_LOOT)
         masterLooter = ObjectAccessor::FindPlayer(m_masterOwnerGuid);
+    else if (m_lootMethod == NOT_GROUP_TYPE_LOOT)
+        return true;
 
     for (auto playerGuid : m_ownerSet)
     {
@@ -924,7 +1036,7 @@ bool Loot::FillLoot(uint32 loot_id, LootStore const& store, Player* lootOwner, b
     for (auto lootItem : m_lootItems)
     {
         // roll for over-threshold item if it's one-player loot
-        if (lootItem->freeForAll || lootItem->lootItemType == LOOTITEM_TYPE_QUEST || lootItem->itemProto->Quality < uint32(m_threshold))
+        if (lootItem->freeForAll || lootItem->lootItemType == LOOTITEM_TYPE_QUEST)
             lootItem->isUnderThreshold = true;
         else
         {
@@ -932,8 +1044,8 @@ bool Loot::FillLoot(uint32 loot_id, LootStore const& store, Player* lootOwner, b
             {
                 case MASTER_LOOT:
                 {
-                    // roll item if masterloot is not in the list or if masterloot have no right for this item
-                    if (!masterLooter || lootItem->allowedGuid.find(m_masterOwnerGuid) == lootItem->allowedGuid.end())
+                    // roll item with quality greater than uncommon and under threshold and handle the case when master loot is disconnected
+                    if (lootItem->itemProto->Quality > ITEM_QUALITY_UNCOMMON && (lootItem->isUnderThreshold || !masterLooter))
                         lootItem->isBlocked = true;
                     break;
                 }
@@ -978,6 +1090,9 @@ uint32 Loot::GetLootStatusFor(Player const* player) const
 
         if (lootItem->isReleased)
             status |= LOOT_STATUS_CONTAIN_RELEASED_ITEMS;
+
+        if (lootItem->isBlocked)
+            status |= LOOT_STATUS_ONGOING_ROLL;
     }
     return status;
 }
@@ -1007,15 +1122,21 @@ bool Loot::CanLoot(Player const* player)
     ObjectGuid const& playerGuid = player->GetObjectGuid();
 
     // not in Guid list of possible owner mean cheat
-    GuidSet::const_iterator itr = m_ownerSet.find(playerGuid);
-    if (itr == m_ownerSet.end())
-        return false;
+    if (m_lootMethod != NOT_GROUP_TYPE_LOOT)
+    {
+        GuidSet::const_iterator itr = m_ownerSet.find(playerGuid);
+        if (itr == m_ownerSet.end())
+            return false;
+    }
 
     uint32 lootStatus = GetLootStatusFor(player);
 
     // is already looted?
     if (!lootStatus)
         return false;
+
+    if (lootStatus & LOOT_STATUS_ONGOING_ROLL)
+        return true;
 
     // all player that have right too loot have right to loot dropped money
     if ((lootStatus & LOOT_STATUS_CONTAIN_GOLD) != 0 || (lootStatus & LOOT_STATUS_CONTAIN_FFA) != 0)
@@ -1150,11 +1271,16 @@ void Loot::SetPlayerIsNotLooting(Player* player)
 void Loot::Release(Player* player)
 {
     bool updateClients = false;
-    if (player->GetObjectGuid() == m_currentLooterGuid)
+    if (player->GetObjectGuid() == m_currentLooterGuid || player->GetObjectGuid() == m_masterOwnerGuid)
     {
         // the owner of the loot released his item
         for (auto lootItem : m_lootItems)
         {
+            auto slotType = lootItem->GetSlotTypeForSharedLoot(player, this);
+
+            if (slotType == LOOT_SLOT_VIEW || slotType == MAX_LOOT_SLOT_TYPE)
+                continue;
+
             // do not release blocked item (rolling ongoing)
             if (!lootItem->isBlocked && !lootItem->isReleased)
             {
@@ -1329,21 +1455,12 @@ void Loot::Release(Player* player)
                     }
                     else
                     {
-                        // player released his skin so we can make it available for the member group or for himself
-                        Group* grp = player->GetGroup();
-                        m_ownerSet.clear();
-                        if (grp)
+                        // player released his skin so we can make it available for everyone
+                        if (creature->GetLootStatus() != CREATURE_LOOT_STATUS_SKIN_AVAILABLE)
                         {
-                            // we need to fill m_ownerSet with player who have access to the loot
-                            Group::MemberSlotList const& memberList = grp->GetMemberSlots();
-                            for (const auto& memberItr : memberList)
-                                m_ownerSet.insert(memberItr.guid);
+                            creature->SetLootStatus(CREATURE_LOOT_STATUS_SKIN_AVAILABLE);
+                            updateClients = true;
                         }
-                        else
-                            m_ownerSet.insert(player->GetObjectGuid());
-                        m_lootMethod = FREE_FOR_ALL;
-                        creature->SetLootStatus(CREATURE_LOOT_STATUS_SKIN_AVAILABLE);
-                        updateClients = true;
                     }
                     break;
                 }
@@ -2299,6 +2416,80 @@ void LootTemplate::LootGroup::AddEntry(LootStoreItem& item)
 }
 
 // Rolls an item from the group, returns nullptr if all miss their chances
+LootStoreItem const* LootTemplate::LootGroup::Roll(LootBase& loot) const
+{
+    if (!ExplicitlyChanced.empty())                         // First explicitly chanced entries are checked
+    {
+        std::vector <LootStoreItem const*> lootStoreItemVector; // we'll use new vector to make easy the randomization
+
+        // fill the new vector with correct pointer to our item list
+        for (auto& itr : ExplicitlyChanced)
+            lootStoreItemVector.push_back(&itr);
+
+        // randomize the new vector
+        random_shuffle(lootStoreItemVector.begin(), lootStoreItemVector.end());
+
+        float chance = rand_chance_f();
+
+        // as the new vector is randomized we can start from first element and stop at first one that meet the condition
+        for (std::vector <LootStoreItem const*>::const_iterator itr = lootStoreItemVector.begin(); itr != lootStoreItemVector.end(); ++itr)
+        {
+            LootStoreItem const* lsi = *itr;
+
+            if (lsi->conditionId && !LootTemplate::FulfillConditions(loot, lsi->conditionId))
+            {
+                sLog.outDebug("In explicit chance -> This item cannot be added! (%u)", lsi->itemid);
+                continue;
+            }
+
+            if (lsi->chance >= 100.0f)
+                return lsi;
+
+            chance -= lsi->chance;
+            if (chance < 0)
+                return lsi;
+        }
+    }
+
+    if (!EqualChanced.empty())                              // If nothing selected yet - an item is taken from equal-chanced part
+    {
+        std::vector <LootStoreItem const*> lootStoreItemVector; // we'll use new vector to make easy the randomization
+
+        // fill the new vector with correct pointer to our item list
+        for (auto& itr : EqualChanced)
+            lootStoreItemVector.push_back(&itr);
+
+        // randomize the new vector
+        random_shuffle(lootStoreItemVector.begin(), lootStoreItemVector.end());
+
+        // as the new vector is randomized we can start from first element and stop at first one that meet the condition
+        for (std::vector <LootStoreItem const*>::const_iterator itr = lootStoreItemVector.begin(); itr != lootStoreItemVector.end(); ++itr)
+        {
+            LootStoreItem const* lsi = *itr;
+
+            //check if we already have that item in the loot list
+            if (loot.IsItemAlreadyIn(lsi->itemid))
+            {
+                // the item is already looted, let's give a 50%  chance to pick another one
+                uint32 chance = urand(0, 1);
+
+                if (chance)
+                    continue;                               // pass this item
+            }
+
+            if (lsi->conditionId && !LootTemplate::FulfillConditions(loot, lsi->conditionId))
+            {
+                sLog.outDebug("In equal chance -> This item cannot be added! (%u)", lsi->itemid);
+                continue;
+            }
+            return lsi;
+        }
+    }
+
+    return nullptr;                                            // Empty drop from the group
+}
+
+// Rolls an item from the group, returns nullptr if all miss their chances
 LootStoreItem const* LootTemplate::LootGroup::Roll(Loot const& loot, Player const* lootOwner) const
 {
     if (!ExplicitlyChanced.empty())                         // First explicitly chanced entries are checked
@@ -2394,6 +2585,14 @@ bool LootTemplate::LootGroup::HasQuestDropForPlayer(Player const* player) const
         if (player->HasQuestForItem(i.itemid))
             return true;
     return false;
+}
+
+// Rolls an item from the group (if any takes its chance) and adds the item to the loot
+void LootTemplate::LootGroup::Process(LootBase& loot) const
+{
+    LootStoreItem const* item = Roll(loot);
+    if (item != nullptr)
+        loot.AddItem(*item);
 }
 
 // Rolls an item from the group (if any takes its chance) and adds the item to the loot
@@ -2524,6 +2723,50 @@ void LootTemplate::Process(Loot& loot, Player const* lootOwner, LootStore const&
         Group.Process(loot, lootOwner);
 }
 
+// Rolls for every item in the template and adds the rolled items the the loot
+void LootTemplate::Process(LootBase& loot, LootStore const& store, uint8 groupId /*= 0*/) const
+{
+    if (groupId)                                            // Group reference uses own processing of the group
+    {
+        if (groupId > Groups.size())
+            return;                                         // Error message already printed at loading stage
+
+        Groups[groupId - 1].Process(loot);
+        return;
+    }
+
+    // Rolling non-grouped items
+    for (auto Entrie : Entries)
+    {
+        // Check condition
+        if (Entrie.conditionId && !FulfillConditions(loot, Entrie.conditionId))
+            continue;
+
+        if (!Entrie.Roll(store.IsRatesAllowed()))
+            continue;                                       // Bad luck for the entry
+
+        if (Entrie.mincountOrRef < 0)                       // References processing
+        {
+            LootTemplate const* Referenced = LootTemplates_Reference.GetLootFor(-Entrie.mincountOrRef);
+
+            if (!Referenced)
+                continue;                                   // Error message already printed at loading stage
+
+            for (uint32 loop = 0; loop < Entrie.maxcount; ++loop) // Ref multiplicator
+                Referenced->Process(loot, store, Entrie.group);
+        }
+        else
+        {                                                   // Plain entries (not a reference, not grouped)
+            if (!loot.AddItem(Entrie))                      // Chance is already checked, just add
+                return;                                     // max item count per drop reached
+        }
+    }
+
+    // Now processing groups
+    for (const auto& Group : Groups)
+        Group.Process(loot);
+}
+
 // True if template includes at least 1 quest drop entry
 bool LootTemplate::HasQuestDrop(LootTemplateMap const& store, uint8 groupId) const
 {
@@ -2596,6 +2839,19 @@ bool LootTemplate::PlayerOrGroupFulfilsCondition(const Loot& loot, Player const*
     // optimization - no need to look up when player is solo
     if (ownerSet.size() <= 1)
         return sObjectMgr.IsConditionSatisfied(conditionId, lootOwner, map, loot.GetLootTarget(), CONDITION_FROM_REFERING_LOOT);
+
+    for (const ObjectGuid& guid : ownerSet)
+        if (Player* player = map->GetPlayer(guid))
+            if (sObjectMgr.IsConditionSatisfied(conditionId, player, map, loot.GetLootTarget(), CONDITION_FROM_REFERING_LOOT))
+                return true;
+
+    return false;
+}
+
+bool LootTemplate::FulfillConditions(LootBase const& loot, uint16 conditionId)
+{
+    Map* map = loot.GetLootTarget()->GetMap();
+    auto& ownerSet = loot.GetOwnerSet();
 
     for (const ObjectGuid& guid : ownerSet)
         if (Player* player = map->GetPlayer(guid))
@@ -3026,4 +3282,260 @@ void LootMgr::CheckDropStats(ChatHandler& chat, uint32 amountOfCheck, uint32 loo
         chat.PSendSysMessage(LANG_ITEM_LIST_CHAT, itemId, itemId, name.c_str(), ss.str().c_str());
         sLog.outString("%6u - %-45s \tfound %6u/%-6u \tso %8s%% drop", itemStat.first, name.c_str(), itemStat.second, amountOfCheck, ss.str().c_str());
     }
+}
+
+bool LootRule::FillLoot(uint32 lootId, LootStore const& store, bool noEmptyError /*= false*/)
+{
+    LootTemplate const* tab = store.GetLootFor(lootId);
+    
+    if (tab)
+    {
+        tab->Process(m_loot, store); // Processing is done there, callback via Loot::AddItem()
+        return true;
+    }
+
+    if (!noEmptyError)
+        sLog.outErrorDb("Table '%s' loot id #%u used but it doesn't have records.", store.GetName(), lootId);
+}
+
+bool LootRule::AddItem(LootStoreItem const& lootStoreItem)
+{
+    if (m_lootItems->size() < MAX_NR_LOOT_ITEMS)
+    {
+        m_lootItems->emplace_back(new LootItem(lootStoreItem, m_lootItems->size()));
+        return true;
+    }
+
+    return false;
+}
+
+void LootRule::SetItemSent(LootItemSPtr lootItem, Player* player)
+{
+    auto storedItemItr = std::find(m_lootItems->begin(), m_lootItems->end(), lootItem);
+    if (storedItemItr != m_lootItems->end())
+        (*storedItemItr)->pickedUpGuid.insert(player->GetObjectGuid());
+}
+
+bool LootRule::IsItemAlreadyIn(uint32 itemId) const
+{
+    for (auto lootItem : *m_lootItems)
+    {
+        if (lootItem->itemId == itemId)
+            return true;
+    }
+    return false;
+}
+
+void SkinningRule::Initialize(Player const& player)
+{
+    m_skinnerGuid = player.GetObjectGuid();
+}
+
+bool SkinningRule::CanLoot(Player const& player) const
+{
+    ObjectGuid pGuid = player.GetObjectGuid();
+    if (!m_isReleased && m_skinnerGuid != pGuid)
+        return false;
+
+    for (auto& lootItem : *m_lootItems)
+    {
+        if (lootItem->pickedUp)
+            continue;
+
+        if (lootItem->AllowedForPlayer(&player, m_loot.GetLootTarget()))
+            return true;
+    }
+    return false;
+}
+
+LootItemVecUPtr SkinningRule::GetLootItem(Player const& player)
+{
+    ObjectGuid pGuid = player.GetObjectGuid();
+    if (!m_isReleased && m_skinnerGuid != pGuid)
+        return nullptr;
+
+    LootItemVecUPtr lootList = LootItemVecUPtr(new LootItemVec());
+
+    for (auto& lootItem : *m_lootItems)
+    {
+        if (!lootItem->AllowedForPlayer(&player, m_loot.GetLootTarget()))
+            continue;
+
+        if (lootItem->pickedUp)
+            continue;
+
+        lootList->emplace_back(lootItem);
+    }
+
+    return std::move(lootList);
+}
+
+void SinglePlayerRule::Initialize(Player const& player)
+{
+    m_ownerGuid = player.GetObjectGuid();
+}
+
+bool SinglePlayerRule::CanLoot(Player const& player) const
+{
+    ObjectGuid pGuid = player.GetObjectGuid();
+    if (m_ownerGuid != pGuid)
+        return false;
+
+    for (auto& lootItem : *m_lootItems)
+    {
+        if (lootItem->pickedUp)
+            continue;
+
+        if (lootItem->AllowedForPlayer(&player, m_loot.GetLootTarget()))
+            return true;
+    }
+    return false;
+}
+
+LootItemVecUPtr SinglePlayerRule::GetLootItem(Player const& player)
+{
+    if (player.GetObjectGuid() != m_ownerGuid)
+        return nullptr;
+
+    LootItemVecUPtr lootList = LootItemVecUPtr(new LootItemVec());
+    for (auto& lootItem : *m_lootItems)
+    {
+        if (lootItem->pickedUp)
+            continue;
+
+        if (!lootItem->AllowedForPlayer(&player, m_loot.GetLootTarget()))
+            continue;
+
+        lootItem->slotType = LOOT_SLOT_OWNER;
+
+        lootList->emplace_back(lootItem);
+    }
+
+    return std::move(lootList);
+}
+
+void LootBase::PrintLootList() const
+{
+    for (auto lootItem : m_lootRule->GetFullContent())
+    {
+        sLog.outString("%s", lootItem->ToString().c_str());
+    }
+}
+
+void LootBase::SetPlayerLootingPose(Player& player, bool looting /*= true*/)
+{
+    if (looting)
+    {
+        if (m_playersLooting.find(player.GetObjectGuid()) != m_playersLooting.end())
+            return;
+
+        m_playersLooting.insert(player.GetObjectGuid());      // add 'this' player as one of the players that are looting 'loot'
+        player.SetLootGuid(m_lootTarget->GetObjectGuid());    // used to keep track of what loot is opened for that player
+
+        player.SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_LOOTING);
+        if (m_lootTarget->IsGameObject())
+            static_cast<GameObject*>(m_lootTarget)->SetInUse(true);
+    }
+    else
+    {
+        if (m_playersLooting.find(player.GetObjectGuid()) == m_playersLooting.end())
+            return;
+
+        m_playersLooting.erase(player.GetObjectGuid());
+        player.SetLootGuid(ObjectGuid());
+
+        player.RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_LOOTING);
+        if (m_lootTarget->IsGameObject())
+            static_cast<GameObject*>(m_lootTarget)->SetInUse(false);
+    }
+}
+
+// fill in the bytebuffer with loot content for specified player
+void LootBase::BuildLootPacket(LootItemVec const& lootItems, ByteBuffer& buffer) const
+{
+    uint8 itemsShown = 0;
+
+    // gold
+    buffer << uint32(m_gold);
+
+    size_t count_pos = buffer.wpos();                            // pos of item count byte
+    buffer << uint8(0);                                          // item count placeholder
+
+    for (auto lootItem : lootItems)
+    {
+        buffer << uint8(lootItem->lootSlot);
+        buffer << *lootItem;
+        buffer << uint8(lootItem->slotType);                      // 0 - get 1 - look only 2 - master selection
+        ++itemsShown;
+    }
+
+    // update number of items shown
+    buffer.put<uint8>(count_pos, itemsShown);
+}
+
+LootSkinning::LootSkinning(Player& player, Creature& lootTarget) : LootBase(LOOT_SKINNING, &lootTarget)
+{
+    // initialize loot rules using skinning rule
+    m_lootRule = LootRuleUPtr(new SkinningRule(*this));
+    m_lootRule->Initialize(player);
+
+    // client need this type to display properly the loot window
+    m_clientLootType = CLIENT_LOOT_PICKPOCKETING;
+
+    // fill loot with dropped items
+    CreatureInfo const* creatureInfo = lootTarget.GetCreatureInfo();
+    m_lootRule->FillLoot(creatureInfo->SkinningLootId, LootTemplates_Skinning);
+}
+
+void LootSkinning::ShowContentTo(Player& plr)
+{
+    LootItemVecSPtr lootItems = m_lootRule->GetLootItem(plr);
+    WorldPacket data(SMSG_LOOT_RESPONSE);
+    data << m_lootTarget->GetObjectGuid();
+    data << uint8(m_clientLootType);
+
+    BuildLootPacket(*lootItems, data);
+    if (m_lootTarget)
+        m_lootTarget->InspectingLoot();
+
+    plr.SendDirectMessage(data);
+}
+
+void LootSkinning::Release(Player& player)
+{
+    throw std::logic_error("The method or operation is not implemented.");
+}
+
+LootCorpseSingle::LootCorpseSingle(Player& player, Creature& lootTarget) : LootBase(LOOT_CORPSE, &lootTarget)
+{
+    // initialize loot rules using single player rule
+    m_lootRule = LootRuleUPtr(new SinglePlayerRule(*this));
+    m_lootRule->Initialize(player);
+
+    // client need this type to display properly the loot window
+    m_clientLootType = CLIENT_LOOT_CORPSE;
+
+    // fill loot with dropped items
+    CreatureInfo const* creatureInfo = lootTarget.GetCreatureInfo();
+    m_lootRule->FillLoot(creatureInfo->LootId, LootTemplates_Creature);
+}
+
+void LootCorpseSingle::ShowContentTo(Player& plr)
+{
+    LootItemVecSPtr lootItems = m_lootRule->GetLootItem(plr);
+    WorldPacket data(SMSG_LOOT_RESPONSE);
+    data << m_lootTarget->GetObjectGuid();
+    data << uint8(m_clientLootType);
+
+    BuildLootPacket(*lootItems, data);                           // fill the data with items contained in the loot (may be empty)
+    SetPlayerLootingPose(plr, true);
+    if (m_lootTarget)
+        m_lootTarget->InspectingLoot();
+
+    plr.SendDirectMessage(data);
+}
+
+void LootCorpseSingle::Release(Player& player)
+{
+    SetPlayerLootingPose(player, false);
 }

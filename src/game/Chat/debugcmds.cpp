@@ -1364,7 +1364,26 @@ bool ChatHandler::HandleSD2ScriptCommand(char* args)
 
 bool ChatHandler::HandleDebugLootDropStats(char* args)
 {
-    uint32 amountOfCheck = 100000;
+    Creature* target = getSelectedCreature();
+    if (target)
+    {
+        sLog.outString("Corpse loot");
+        {
+            LootCorpseSingle loot(*GetPlayer(), *target);
+            loot.PrintLootList();
+            loot.ShowContentTo(*GetPlayer());
+        }
+
+        sLog.outString("Skinning loot");
+        {
+            LootSkinning loot(*GetPlayer(), *target);
+            loot.PrintLootList();
+        }
+    }
+
+    return true;
+
+    /*uint32 amountOfCheck = 100000;
     uint32 lootId = 0;
     std::string lootStore;
 
@@ -1440,7 +1459,7 @@ bool ChatHandler::HandleDebugLootDropStats(char* args)
     }
 
     sLootMgr.CheckDropStats(*this, amountOfCheck, lootId, lootStore);
-    return true;
+    return true;*/
 }
 
 bool ChatHandler::HandleDebugSendWorldState(char* args)

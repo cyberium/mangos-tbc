@@ -34,10 +34,16 @@ class LootStore;
 class WorldObject;
 class LootTemplate;
 class Loot;
+class LootBase;
+class LootSkinning;
+class LootRule;
+class SkinningRule;
+
 class WorldSession;
 struct LootItem;
 struct ItemPrototype;
 
+typedef std::unique_ptr<LootBase> LootBaseUPtr;
 
 #define MAX_NR_LOOT_ITEMS 16
 // note: the client cannot show more than 16 items total
@@ -104,7 +110,8 @@ enum LootStatus
     LOOT_STATUS_CONTAIN_FFA            = 0x02,
     LOOT_STATUS_CONTAIN_GOLD           = 0x04,
     LOOT_STATUS_CONTAIN_RELEASED_ITEMS = 0x08,
-    LOOT_STATUS_FAKE_LOOT              = 0x10
+    LOOT_STATUS_ONGOING_ROLL           = 0x10,
+    LOOT_STATUS_FAKE_LOOT              = 0x20
 };
 
 enum LootError
@@ -191,7 +198,9 @@ struct LootItem
     uint32       displayID;
     LootItemType lootItemType;
     GuidSet      allowedGuid;                                       // player's that have right to loot this item
+    GuidSet      pickedUpGuid;                                      // player's that have already picked the item
     uint32       lootSlot;                                          // the slot number will be send to client
+    LootSlotType slotType;                                          // slot type
     uint16       conditionId       : 16;                            // allow compiler pack structure
     uint8        count             : 8;
     bool         isBlocked         : 1;
@@ -199,6 +208,7 @@ struct LootItem
     bool         isUnderThreshold  : 1;
     bool         currentLooterPass : 1;
     bool         isReleased        : 1;                             // true if item is released by looter or by roll system
+    bool         pickedUp          : 1;
 
     // storing item prototype for fast access
     ItemPrototype const* itemProto;
@@ -206,6 +216,7 @@ struct LootItem
     // Constructor, copies most fields from LootStoreItem, generates random count and random suffixes/properties
     // Should be called for non-reference LootStoreItem entries only (mincountOrRef > 0)
     explicit LootItem(LootStoreItem const& li, uint32 _lootSlot, uint32 threshold);
+    explicit LootItem(LootStoreItem const& li, uint32 _lootSlot);
 
     LootItem(uint32 _itemId, uint32 _count, uint32 _randomSuffix, int32 _randomPropertyId, uint32 _lootSlot);
 
@@ -213,9 +224,28 @@ struct LootItem
     bool AllowedForPlayer(Player const* player, WorldObject const* lootTarget) const;
     LootSlotType GetSlotTypeForSharedLoot(Player const* player, Loot const* loot) const;
     bool IsAllowed(Player const* player, Loot const* loot) const;
+
+    std::string ToString() const;
 };
 
+
+typedef std::shared_ptr<LootItem> LootItemSPtr;
+typedef std::vector<LootItemSPtr> LootItemVec;
+typedef std::shared_ptr<LootItemVec> LootItemVecSPtr;
+typedef std::unique_ptr<LootItemVec> LootItemVecUPtr;
+
+struct LootItemRuleData
+{
+public:
+    LootItemSPtr lootItem;
+    GuidSet lootedGuid;
+};
+typedef std::map<uint32, LootItemRuleData> LootItemGuidTrackerMap;
+
+
+
 typedef std::vector<LootItem*> LootItemList;
+typedef std::unique_ptr<LootStoreItem> LootStoreItemUPtr;
 typedef std::vector<LootStoreItem> LootStoreItemList;
 typedef std::unordered_map<uint32, LootTemplate*> LootTemplateMap;
 typedef std::set<uint32> LootIdSet;
@@ -263,14 +293,14 @@ class LootTemplate
         void AddEntry(LootStoreItem& item);
         // Rolls for every item in the template and adds the rolled items the the loot
         void Process(Loot& loot, Player const* lootOwner, LootStore const& store, bool rate, uint8 groupId = 0) const;
-
+        void Process(LootBase& loot, LootStore const& store, uint8 groupId = 0) const;
         // True if template includes at least 1 quest drop entry
         bool HasQuestDrop(LootTemplateMap const& store, uint8 groupId = 0) const;
         // True if template includes at least 1 quest drop for an active quest of the player
         bool HasQuestDropForPlayer(LootTemplateMap const& store, Player const* player, uint8 groupId = 0) const;
-        // True if at least one player fulfils loot condition
+        // True if at least one player fulfill loot condition
         static bool PlayerOrGroupFulfilsCondition(const Loot& loot, Player const* lootOwner, uint16 conditionId);
-
+        static bool FulfillConditions(LootBase const& loot, uint16 conditionId);
         // Checks integrity of the template
         void Verify(LootStore const& lootstore, uint32 id) const;
         void CheckLootRefs(LootIdSet* ref_set) const;
@@ -283,6 +313,154 @@ class LootTemplate
 
 ByteBuffer& operator<<(ByteBuffer& b, LootItem const& li);
 
+//////////////////////////////////////////////////////////////////////////
+// Base class for loot rules
+//////////////////////////////////////////////////////////////////////////
+class LootRule
+{
+public:
+    LootRule(LootBase& loot) : m_loot(loot), m_lootItems(new LootItemVec()) { m_lootItems->reserve(MAX_NR_LOOT_ITEMS); }
+
+    virtual void Initialize(Player const& player) = 0;
+    virtual bool CanLoot(Player const& player) const = 0;
+    virtual LootItemVecUPtr GetLootItem(Player const& player) = 0;
+    bool FillLoot(uint32 loot_id, LootStore const& store, bool noEmptyError = false);
+    bool AddItem(LootStoreItem const& lootStoreItem);
+    void SetItemSent(LootItemSPtr lootItem, Player* player);
+    bool IsItemAlreadyIn(uint32 itemId) const;
+
+    LootItemVec const& GetFullContent() const { return *m_lootItems; }
+
+protected:
+    LootBase&        m_loot;
+    LootItemVecUPtr  m_lootItems;                     // store of the items contained in loot
+};
+
+typedef std::unique_ptr<LootRule> LootRuleUPtr;
+
+// Skinning loot handling
+class SkinningRule : public LootRule
+{
+public:
+    SkinningRule(LootBase& loot) : LootRule(loot), m_isReleased(false) {}
+    SkinningRule() = delete;
+
+    void Initialize(Player const& player) override;
+    bool CanLoot(Player const& player) const override;
+    LootItemVecUPtr GetLootItem(Player const& player) override;
+
+private:
+    bool m_isReleased;
+    ObjectGuid m_skinnerGuid;
+};
+
+// Single player rule loot handling
+class SinglePlayerRule : public LootRule
+{
+public:
+    SinglePlayerRule(LootBase& loot) : LootRule(loot) {}
+    SinglePlayerRule() = delete;
+
+    void Initialize(Player const& player) override;
+    bool CanLoot(Player const& player) const override;
+    LootItemVecUPtr GetLootItem(Player const& player) override;
+
+private:
+    ObjectGuid m_ownerGuid;
+};
+
+
+
+class GroupLootBaseRule : public LootRule
+{
+public:
+    GroupLootBaseRule(LootBase& loot) : LootRule(loot) {}
+    GroupLootBaseRule() = delete;
+
+protected:
+    GuidSet          m_ownerSet;                      // set of all player who have right to the loot
+};
+
+
+
+//////////////////////////////////////////////////////////////////////////
+// Base class for loot
+//////////////////////////////////////////////////////////////////////////
+
+class LootBase
+{
+    friend struct LootItem;
+    friend class GroupLootRoll;
+    friend class LootMgr;
+
+public:
+    LootBase(LootType lType, WorldObject* lootTarget) :
+        m_lootType(lType), m_inspected(false), m_lootTarget(lootTarget) {}
+
+
+    bool AddItem(LootStoreItem const& lootStoreItem) {  return m_lootRule->AddItem(lootStoreItem); }
+    void SetItemSent(LootItemSPtr lootItem, Player* player) { m_lootRule->SetItemSent(lootItem, player); }
+    void BuildLootPacket(LootItemVec const& lootItems, ByteBuffer& buffer) const;
+    virtual void Release(Player& player) = 0;
+
+    // Send methods
+    void SendGold(Player* player);
+    virtual void ShowContentTo(Player& plr) = 0;
+
+    // Getters
+    virtual bool HaveLoot(Player& player) const { return m_lootRule->CanLoot(player); }
+    bool IsItemAlreadyIn(uint32 itemId) const { return m_lootRule->IsItemAlreadyIn(itemId); };
+    LootType GetLootType() const { return m_lootType; }
+    bool HasBeenInspected() const { return m_inspected; };
+    WorldObject* GetLootTarget() const { return m_lootTarget; }
+    GuidSet const& GetOwnerSet() const { return m_ownerSet; }
+    Player* GetOwner() const { return m_owner; }
+
+
+    // Utile
+    void PrintLootList() const;
+
+
+protected:
+    void SetPlayerLootingPose(Player& player, bool looting = true);
+
+    WorldObject*     m_lootTarget;
+    ClientLootType   m_clientLootType;
+    LootType         m_lootType;
+
+    bool             m_inspected;
+
+    uint32           m_gold;                          // amount of money contained in loot
+    GuidSet          m_playersLooting;                // player who opened loot windows
+
+    LootRuleUPtr     m_lootRule;
+
+    GuidSet          m_ownerSet;
+private:
+    Player*          m_owner;
+};
+
+class LootSkinning : public LootBase
+{
+public:
+    LootSkinning(Player& player, Creature& lootTarget);
+    //bool HaveLoot(Player& player) const override;
+    void ShowContentTo(Player& plr) override;
+    void Release(Player& player) override;
+};
+
+class LootCorpseSingle : public LootBase
+{
+public:
+    LootCorpseSingle(Player& player, Creature& lootTarget);
+    //bool HaveLoot(Player& player) const override;
+    void ShowContentTo(Player& plr) override;
+    void Release(Player& player) override;
+};
+
+//////////////////////////////////////////////////////////////////////////
+// Old class should be removed
+//////////////////////////////////////////////////////////////////////////
 class Loot
 {
     public:
