@@ -34,7 +34,7 @@ void WorldSession::HandleAutostoreLootItemOpcode(WorldPacket& recv_data)
 
     DEBUG_LOG("WORLD: CMSG_AUTOSTORE_LOOT_ITEM > requesting item in slot %u", uint32(itemSlot));
 
-    Loot* loot = sLootMgr.GetLoot(_player);
+    LootBase* loot = sLootMgr.FindLoot(_player, ObjectGuid());
 
     if (!loot)
     {
@@ -42,31 +42,27 @@ void WorldSession::HandleAutostoreLootItemOpcode(WorldPacket& recv_data)
         return;
     }
 
-    ObjectGuid const& lguid = loot->GetLootGuid();
-
-    LootItem* lootItem = loot->GetLootItemInSlot(itemSlot);
-
-    if (!lootItem)
-    {
-        _player->SendEquipError(EQUIP_ERR_ITEM_NOT_FOUND, nullptr, nullptr);
-        loot->SendReleaseFor(_player);
-        return;
-    }
-
     // item may be blocked by roll system or already looted or another cheating possibility
-    if (lootItem->isBlocked || lootItem->GetSlotTypeForSharedLoot(_player, loot) == MAX_LOOT_SLOT_TYPE)
+    if (!loot->CanLootSlot(_player->GetObjectGuid(), itemSlot))
     {
-        sLog.outDebug("HandleAutostoreLootItemOpcode> %s have no right to loot itemId(%u)", _player->GetGuidStr().c_str(), lootItem->itemId);
-        loot->SendReleaseFor(_player);
+        sLog.outDebug("HandleAutostoreLootItemOpcode> %s have no right to loot itemSlot(%u)", _player->GetGuidStr().c_str(), itemSlot);
+        loot->SendReleaseFor(*_player);
         return;
     }
 
-    InventoryResult result = loot->SendItem(_player, lootItem);
-
-    if (result == EQUIP_ERR_OK && lguid.IsItem())
+    InventoryResult result = loot->SendItem(*_player, itemSlot);
+    if (result != EQUIP_ERR_OK)
     {
-        if (Item* item = _player->GetItemByGuid(lguid))
-            item->SetLootState(ITEM_LOOT_CHANGED);
+        _player->SendEquipError(result, nullptr, nullptr);
+        return;
+    }
+    else
+    {
+        if (result == EQUIP_ERR_OK && loot->GetLootTarget()->IsItem())
+        {
+            if (Item* item = _player->GetItemByGuid(loot->GetLootTarget()->GetObjectGuid()))
+                item->SetLootState(ITEM_LOOT_CHANGED);
+        }
     }
 }
 
@@ -96,12 +92,12 @@ void WorldSession::HandleLootOpcode(WorldPacket& recv_data)
     if (!_player->IsAlive())
         return;
 
-    if (Loot* loot = sLootMgr.GetLoot(_player, lguid))
+    if (LootBase* loot = sLootMgr.FindLoot(_player, lguid))
     {
         // remove stealth aura
         _player->DoInteraction(lguid);
 
-        loot->ShowContentTo(_player);
+        loot->ShowContentTo(*_player);
     }
 
     // interrupt cast
@@ -118,6 +114,9 @@ void WorldSession::HandleLootReleaseOpcode(WorldPacket& recv_data)
 
     if (Loot* loot = sLootMgr.GetLoot(_player, lguid))
         loot->Release(_player);
+
+    if(LootBase* loot = sLootMgr.FindLoot(_player, lguid))
+        loot->Release(*_player);
 }
 
 void WorldSession::HandleLootMasterGiveOpcode(WorldPacket& recv_data)

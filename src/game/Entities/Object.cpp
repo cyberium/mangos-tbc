@@ -599,7 +599,7 @@ void Object::BuildValuesUpdate(uint8 updatetype, ByteBuffer* data, UpdateMask* u
                         else
                         {
                             // check m_loot flag
-                            if (creature->m_loot && creature->m_loot->CanLoot(target))
+                            if (creature->m_loot2 && creature->m_loot2->HaveLoot(*target))
                             {
                                 // creature is dead and this player can loot it
                                 dynflagsValue = dynflagsValue | UNIT_DYNFLAG_LOOTABLE;

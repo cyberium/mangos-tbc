@@ -3209,6 +3209,70 @@ Loot* LootMgr::GetLoot(Player* player, ObjectGuid const& targetGuid) const
     return loot;
 }
 
+// Get loot by object guid
+// If target guid is not provided, try to find it by recipient or current player target
+LootBase* LootMgr::FindLoot(Player* player, ObjectGuid const& targetGuid) const
+{
+    LootBase* loot = nullptr;
+    ObjectGuid lguid;
+    if (targetGuid.IsEmpty())
+    {
+        lguid = player->GetLootGuid();
+
+        if (lguid.IsEmpty())
+        {
+            lguid = player->GetSelectionGuid();
+            if (lguid.IsEmpty())
+                return nullptr;
+        }
+    }
+    else
+        lguid = targetGuid;
+
+    switch (lguid.GetHigh())
+    {
+        case HIGHGUID_GAMEOBJECT:
+        {
+            GameObject* gob = player->GetMap()->GetGameObject(lguid);
+
+            // not check distance for GO in case owned GO (fishing bobber case, for example)
+            if (gob)
+                loot = gob->m_loot2.get();
+
+            break;
+        }
+        case HIGHGUID_CORPSE:                               // remove insignia ONLY in BG
+        {
+            Corpse* bones = player->GetMap()->GetCorpse(lguid);
+
+            if (bones)
+                loot = bones->m_loot2.get();
+
+            break;
+        }
+        case HIGHGUID_ITEM:
+        {
+            Item* item = player->GetItemByGuid(lguid);
+            if (item && item->HasGeneratedLoot())
+                loot = item->m_loot2.get();
+            break;
+        }
+        case HIGHGUID_UNIT:
+        {
+            Creature* creature = player->GetMap()->GetCreature(lguid);
+
+            if (creature)
+                loot = creature->m_loot2.get();
+
+            break;
+        }
+        default:
+            return nullptr;                                         // unlootable type
+    }
+
+    return loot;
+}
+
 void LootMgr::CheckDropStats(ChatHandler& chat, uint32 amountOfCheck, uint32 lootId, std::string lootStore) const
 {
     // choose correct loot template
@@ -3284,10 +3348,48 @@ void LootMgr::CheckDropStats(ChatHandler& chat, uint32 amountOfCheck, uint32 loo
     }
 }
 
+LootBaseUPtr LootMgr::GenerateLoot(Player* player, Creature* lootTarget, LootType type)
+{
+    switch (type)
+    {
+        case LOOT_CORPSE:
+            return std::move(LootBaseUPtr(new LootCorpseSingle(*player, *lootTarget)));
+            break;
+
+        case LOOT_PICKPOCKETING:
+            break;
+
+        case LOOT_SKINNING:
+            return std::move(LootBaseUPtr(new LootSkinning(*player, *lootTarget)));
+            break;
+
+        case LOOT_DEBUG:
+            break;
+        default:
+            break;
+    }
+
+    return nullptr;
+}
+
+bool LootRule::CanLootSlot(ObjectGuid const& targetGuid, uint32 itemSlot)
+{
+    auto lootItem = GetLootItemInSlot(itemSlot);
+    if (!lootItem)
+        return false;
+
+    if (lootItem->freeForAll && lootItem->pickedUpGuid.find(targetGuid) == lootItem->pickedUpGuid.end())
+        return true;
+
+    if (lootItem->pickedUpGuid.find(targetGuid) == lootItem->pickedUpGuid.end())
+        return true;
+    return false;
+}
+
 bool LootRule::FillLoot(uint32 lootId, LootStore const& store, bool noEmptyError /*= false*/)
 {
     LootTemplate const* tab = store.GetLootFor(lootId);
-    
+
     if (tab)
     {
         tab->Process(m_loot, store); // Processing is done there, callback via Loot::AddItem()
@@ -3296,6 +3398,8 @@ bool LootRule::FillLoot(uint32 lootId, LootStore const& store, bool noEmptyError
 
     if (!noEmptyError)
         sLog.outErrorDb("Table '%s' loot id #%u used but it doesn't have records.", store.GetName(), lootId);
+
+    return false;
 }
 
 bool LootRule::AddItem(LootStoreItem const& lootStoreItem)
@@ -3303,10 +3407,28 @@ bool LootRule::AddItem(LootStoreItem const& lootStoreItem)
     if (m_lootItems->size() < MAX_NR_LOOT_ITEMS)
     {
         m_lootItems->emplace_back(new LootItem(lootStoreItem, m_lootItems->size()));
+
+        for (auto owner : m_ownerSet)
+        {
+            Player* plr = ObjectAccessor::FindPlayer(owner);
+            if (plr && m_lootItems->back()->AllowedForPlayer(plr, m_loot.GetLootTarget()))
+                m_lootItems->back()->allowedGuid.emplace(owner);
+        }
         return true;
     }
 
     return false;
+}
+
+// will return the pointer of item in loot slot provided without any right check
+LootItemSPtr LootRule::GetLootItemInSlot(uint32 itemSlot)
+{
+    for (auto lootItem : *m_lootItems)
+    {
+        if (lootItem->lootSlot == itemSlot)
+            return lootItem;
+    }
+    return nullptr;
 }
 
 void LootRule::SetItemSent(LootItemSPtr lootItem, Player* player)
@@ -3339,7 +3461,7 @@ bool SkinningRule::CanLoot(Player const& player) const
 
     for (auto& lootItem : *m_lootItems)
     {
-        if (lootItem->pickedUp)
+        if (!lootItem->freeForAll && lootItem->pickedUpGuid.size() != 0)
             continue;
 
         if (lootItem->AllowedForPlayer(&player, m_loot.GetLootTarget()))
@@ -3370,6 +3492,19 @@ LootItemVecUPtr SkinningRule::GetLootItem(Player const& player)
     return std::move(lootList);
 }
 
+bool SkinningRule::IsLootedFor(ObjectGuid const& targetGuid) const
+{
+    for (auto& lootItem : *m_lootItems)
+    {
+        if (lootItem->freeForAll || lootItem->allowedGuid.find(targetGuid) == lootItem->allowedGuid.end())
+            continue;
+
+        if (lootItem->pickedUpGuid.find(targetGuid) == lootItem->pickedUpGuid.end())
+            return false;
+    }
+    return true;
+}
+
 void SinglePlayerRule::Initialize(Player const& player)
 {
     m_ownerGuid = player.GetObjectGuid();
@@ -3383,10 +3518,7 @@ bool SinglePlayerRule::CanLoot(Player const& player) const
 
     for (auto& lootItem : *m_lootItems)
     {
-        if (lootItem->pickedUp)
-            continue;
-
-        if (lootItem->AllowedForPlayer(&player, m_loot.GetLootTarget()))
+        if (lootItem->pickedUpGuid.size() == 0)
             return true;
     }
     return false;
@@ -3400,11 +3532,8 @@ LootItemVecUPtr SinglePlayerRule::GetLootItem(Player const& player)
     LootItemVecUPtr lootList = LootItemVecUPtr(new LootItemVec());
     for (auto& lootItem : *m_lootItems)
     {
-        if (lootItem->pickedUp)
-            continue;
-
-        if (!lootItem->AllowedForPlayer(&player, m_loot.GetLootTarget()))
-            continue;
+        if (lootItem->pickedUpGuid.find(player.GetObjectGuid()) != lootItem->pickedUpGuid.end())
+            continue;;
 
         lootItem->slotType = LOOT_SLOT_OWNER;
 
@@ -3412,6 +3541,17 @@ LootItemVecUPtr SinglePlayerRule::GetLootItem(Player const& player)
     }
 
     return std::move(lootList);
+}
+
+bool SinglePlayerRule::IsLootedFor(ObjectGuid const& targetGuid) const
+{
+    for (auto& lootItem : *m_lootItems)
+    {
+
+        if (lootItem->pickedUpGuid.size() == 0)
+            return false;
+    }
+    return true;
 }
 
 void LootBase::PrintLootList() const
@@ -3451,7 +3591,7 @@ void LootBase::SetPlayerLootingPose(Player& player, bool looting /*= true*/)
 }
 
 // fill in the bytebuffer with loot content for specified player
-void LootBase::BuildLootPacket(LootItemVec const& lootItems, ByteBuffer& buffer) const
+void LootBase::BuildLootPacket(LootItemVec const* lootItems, ByteBuffer& buffer) const
 {
     uint8 itemsShown = 0;
 
@@ -3461,7 +3601,10 @@ void LootBase::BuildLootPacket(LootItemVec const& lootItems, ByteBuffer& buffer)
     size_t count_pos = buffer.wpos();                            // pos of item count byte
     buffer << uint8(0);                                          // item count placeholder
 
-    for (auto lootItem : lootItems)
+    if (!lootItems)
+        return;
+
+    for (auto lootItem : *lootItems)
     {
         buffer << uint8(lootItem->lootSlot);
         buffer << *lootItem;
@@ -3471,6 +3614,183 @@ void LootBase::BuildLootPacket(LootItemVec const& lootItems, ByteBuffer& buffer)
 
     // update number of items shown
     buffer.put<uint8>(count_pos, itemsShown);
+}
+
+void LootBase::SendGold(Player& player)
+{
+
+}
+
+void LootBase::SendReleaseFor(ObjectGuid const& guid)
+{
+    Player* plr = sObjectAccessor.FindPlayer(guid);
+    if (plr && plr->GetSession())
+        SendReleaseFor(*plr);
+}
+
+// no check for null pointer so it must be valid
+void LootBase::SendReleaseFor(Player& plr)
+{
+    WorldPacket data(SMSG_LOOT_RELEASE_RESPONSE, (8 + 1));
+    data << m_lootTarget->GetObjectGuid();
+    data << uint8(1);
+    plr.GetSession()->SendPacket(data);
+    SetPlayerLootingPose(plr, false);
+}
+
+void LootBase::SendReleaseForAll()
+{
+    GuidSet::iterator itr = m_playersLooting.begin();
+    while (itr != m_playersLooting.end())
+        SendReleaseFor(*itr++);
+}
+
+InventoryResult LootBase::SendItem(Player& target, uint32 itemSlot)
+{
+    LootItemSPtr lootItem = m_lootRule->GetLootItemInSlot(itemSlot);
+    return SendItem(target, lootItem);
+}
+
+InventoryResult LootBase::SendItem(Player& target, LootItemSPtr lootItem)
+{
+    if (!lootItem)
+        return EQUIP_ERR_ITEM_NOT_FOUND;
+
+    bool playerGotItem = false;
+    InventoryResult msg = EQUIP_ERR_CANT_DO_RIGHT_NOW;
+    if (target.GetSession())
+    {
+        ItemPosCountVec dest;
+        msg = target.CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, lootItem->itemId, lootItem->count);
+        if (msg == EQUIP_ERR_OK)
+        {
+            Item* newItem = target.StoreNewItem(dest, lootItem->itemId, true, lootItem->randomPropertyId);
+            NotifyItemRemoved(target, *lootItem);
+
+            target.SendNewItem(newItem, uint32(lootItem->count), false, false, true);
+
+            lootItem->pickedUpGuid.insert(target.GetObjectGuid());
+
+            playerGotItem = true;
+            m_isChanged = true;
+        }
+        else
+            target.SendEquipError(msg, nullptr, nullptr, lootItem->itemId);
+    }
+
+    if (!playerGotItem)
+    {
+        // an error occurred player didn't received his loot
+        lootItem->isBlocked = false;                                     // make the item available (was blocked since roll started)
+        m_lootRule->OnFailedItemSent(target.GetObjectGuid(), *lootItem); // notify rule for sent failure
+        //m_currentLooterGuid = target->GetObjectGuid();                 // change looter guid to let only him right to loot
+        m_lootRule->SendAllowedLooter();                                 // update the looter right for client
+    }
+    else
+    {
+        if (m_lootRule->IsLootedForAll())
+        {
+            SendReleaseForAll();
+            /*if (m_isChest)
+            {
+                GameObject* go = (GameObject*)m_lootTarget;
+                uint32 go_min = go->GetGOInfo()->chest.minSuccessOpens;
+                uint32 go_max = go->GetGOInfo()->chest.maxSuccessOpens;
+                // only vein pass this check
+                if (go_min != 0 && go_max > go_min)
+                {
+                    // nothing to do refill is handled in Loot::Release()
+                }
+                else
+                    go->SetLootState(GO_JUST_DEACTIVATED);
+            }*/
+        }
+        else if (m_lootRule->IsLootedFor(target.GetObjectGuid()))
+            SendReleaseFor(target);
+        ForceLootAnimationClientUpdate();
+    }
+    return msg;
+}
+
+void LootBase::NotifyMoneyRemoved()
+{
+    // notify all players that are looting this that the money was removed
+    GuidSet::iterator i_next;
+    for (GuidSet::iterator i = m_playersLooting.begin(); i != m_playersLooting.end(); i = i_next)
+    {
+        i_next = i;
+        ++i_next;
+        Player* plr = ObjectAccessor::FindPlayer(*i);
+        if (plr && plr->GetSession())
+        {
+            WorldPacket data(SMSG_LOOT_CLEAR_MONEY, 0);
+            plr->GetSession()->SendPacket(data);
+        }
+        else
+            m_playersLooting.erase(i);
+    }
+}
+
+// notify all players that are looting this that the item was removed
+void LootBase::NotifyItemRemoved(uint32 lootIndex)
+{
+    WorldPacket data(SMSG_LOOT_REMOVED, 1);
+    data << uint8(lootIndex);
+
+    GuidSet::iterator i_next;
+    for (GuidSet::iterator i = m_playersLooting.begin(); i != m_playersLooting.end(); i = i_next)
+    {
+        i_next = i;
+        ++i_next;
+        Player* plr = ObjectAccessor::FindPlayer(*i);
+
+        if (plr && plr->GetSession())
+            plr->GetSession()->SendPacket(data);
+        else
+            m_playersLooting.erase(i);
+    }
+}
+
+void LootBase::NotifyItemRemoved(Player& player, LootItem& lootItem) const
+{
+    WorldPacket data(SMSG_LOOT_REMOVED, 1);
+    data << uint8(lootItem.lootSlot);
+
+    if (lootItem.freeForAll)
+        player.GetSession()->SendPacket(data);
+    else
+    {
+        for (auto guid : m_playersLooting)
+        {
+            Player* plr = ObjectAccessor::FindPlayer(guid);
+
+            if (plr && plr->GetSession())
+                plr->GetSession()->SendPacket(data);
+        }
+    }
+}
+
+// this will force server to update all client that is showing this object
+// used to update players right to loot or sparkles animation
+void LootBase::ForceLootAnimationClientUpdate() const
+{
+    if (!m_lootTarget)
+        return;
+
+    switch (m_lootTarget->GetTypeId())
+    {
+        case TYPEID_UNIT:
+            m_lootTarget->ForceValuesUpdateAtIndex(UNIT_DYNAMIC_FLAGS);
+            break;
+        case TYPEID_GAMEOBJECT:
+            return;
+            // we have to update sparkles/loot for this object
+            //if (m_isChest)
+                m_lootTarget->ForceValuesUpdateAtIndex(GAMEOBJECT_DYN_FLAGS);
+            break;
+        default:
+            break;
+    }
 }
 
 LootSkinning::LootSkinning(Player& player, Creature& lootTarget) : LootBase(LOOT_SKINNING, &lootTarget)
@@ -3494,7 +3814,7 @@ void LootSkinning::ShowContentTo(Player& plr)
     data << m_lootTarget->GetObjectGuid();
     data << uint8(m_clientLootType);
 
-    BuildLootPacket(*lootItems, data);
+    BuildLootPacket(lootItems.get(), data);
     if (m_lootTarget)
         m_lootTarget->InspectingLoot();
 
@@ -3527,7 +3847,7 @@ void LootCorpseSingle::ShowContentTo(Player& plr)
     data << m_lootTarget->GetObjectGuid();
     data << uint8(m_clientLootType);
 
-    BuildLootPacket(*lootItems, data);                           // fill the data with items contained in the loot (may be empty)
+    BuildLootPacket(lootItems.get(), data);                           // fill the data with items contained in the loot (may be empty)
     SetPlayerLootingPose(plr, true);
     if (m_lootTarget)
         m_lootTarget->InspectingLoot();

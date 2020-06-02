@@ -19,12 +19,15 @@
 #ifndef MANGOS_LOOTMGR_H
 #define MANGOS_LOOTMGR_H
 
+#include "LootDefines.h"
+
 #include "ByteBuffer.h"
 #include "Entities/ObjectGuid.h"
 #include "Globals/SharedDefines.h"
 
 #include <vector>
 #include "Entities/Bag.h"
+
 
 #define LOOT_ROLL_TIMEOUT  (1*MINUTE*IN_MILLISECONDS)
 
@@ -34,7 +37,7 @@ class LootStore;
 class WorldObject;
 class LootTemplate;
 class Loot;
-class LootBase;
+
 class LootSkinning;
 class LootRule;
 class SkinningRule;
@@ -42,94 +45,6 @@ class SkinningRule;
 class WorldSession;
 struct LootItem;
 struct ItemPrototype;
-
-typedef std::unique_ptr<LootBase> LootBaseUPtr;
-
-#define MAX_NR_LOOT_ITEMS 16
-// note: the client cannot show more than 16 items total
-
-enum PermissionTypes
-{
-    ALL_PERMISSION    = 0,
-    GROUP_PERMISSION  = 1,
-    MASTER_PERMISSION = 2,
-    OWNER_PERMISSION  = 3,                                  // for single player only loots
-    NONE_PERMISSION   = 4
-};
-
-enum LootSlotType
-{
-    LOOT_SLOT_NORMAL  = 0,                                  // can be looted
-    LOOT_SLOT_VIEW    = 1,                                  // can be only view (ignore any loot attempts)
-    LOOT_SLOT_MASTER  = 2,                                  // can be looted only master (error message)
-    LOOT_SLOT_REQS    = 3,                                  // can't be looted (error message about missing reqs)
-    LOOT_SLOT_OWNER   = 4,                                  // ignore binding confirmation and etc, for single player looting
-    MAX_LOOT_SLOT_TYPE                                      // custom, use for mark skipped from show items
-};
-
-enum RollVote
-{
-    ROLL_PASS = 0,
-    ROLL_NEED = 1,
-    ROLL_GREED = 2,
-    ROLL_DISENCHANT = 3,
-    ROLL_NOT_EMITED_YET = 4,                             // send to client
-    ROLL_NOT_VALID = 5                                   // not send to client
-};
-
-// set what votes allowed
-enum RollVoteMask
-{
-    ROLL_VOTE_MASK_PASS = 0x01,
-    ROLL_VOTE_MASK_NEED = 0x02,
-    ROLL_VOTE_MASK_GREED = 0x04,
-    ROLL_VOTE_MASK_DISENCHANT = 0x08,
-
-    ROLL_VOTE_MASK_ALL = 0x0F,
-};
-
-enum LootItemType
-{
-    LOOTITEM_TYPE_NORMAL        = 1,
-    LOOTITEM_TYPE_QUEST         = 2,
-    LOOTITEM_TYPE_CONDITIONNAL  = 3
-};
-
-// loot type sent to clients
-enum ClientLootType
-{
-    CLIENT_LOOT_CORPSE          = 1,
-    CLIENT_LOOT_PICKPOCKETING   = 2,
-    CLIENT_LOOT_FISHING         = 3,
-    CLIENT_LOOT_DISENCHANTING   = 4
-};
-
-enum LootStatus
-{
-    LOOT_STATUS_NOT_FULLY_LOOTED       = 0x01,
-    LOOT_STATUS_CONTAIN_FFA            = 0x02,
-    LOOT_STATUS_CONTAIN_GOLD           = 0x04,
-    LOOT_STATUS_CONTAIN_RELEASED_ITEMS = 0x08,
-    LOOT_STATUS_ONGOING_ROLL           = 0x10,
-    LOOT_STATUS_FAKE_LOOT              = 0x20
-};
-
-enum LootError
-{
-    LOOT_ERROR_DIDNT_KILL               = 0,    // You don't have permission to loot that corpse.
-    LOOT_ERROR_TOO_FAR                  = 4,    // You are too far away to loot that corpse.
-    LOOT_ERROR_BAD_FACING               = 5,    // You must be facing the corpse to loot it.
-    LOOT_ERROR_LOCKED                   = 6,    // Someone is already looting that corpse.
-    LOOT_ERROR_NOTSTANDING              = 8,    // You need to be standing up to loot something!
-    LOOT_ERROR_STUNNED                  = 9,    // You can't loot anything while stunned!
-    LOOT_ERROR_PLAYER_NOT_FOUND         = 10,   // Player not found
-    LOOT_ERROR_PLAY_TIME_EXCEEDED       = 11,   // Maximum play time exceeded
-    LOOT_ERROR_MASTER_INV_FULL          = 12,   // That player's inventory is full
-    LOOT_ERROR_MASTER_UNIQUE_ITEM       = 13,   // Player has too many of that item already
-    LOOT_ERROR_MASTER_OTHER             = 14,   // Can't assign item to that player
-    LOOT_ERROR_ALREADY_PICKPOCKETED     = 15,   // Your target has already had its pockets picked
-    LOOT_ERROR_NOT_WHILE_SHAPESHIFTED   = 16    // You can't do that while shapeshifted.
-};
 
 struct PlayerRollVote
 {
@@ -324,16 +239,29 @@ public:
     virtual void Initialize(Player const& player) = 0;
     virtual bool CanLoot(Player const& player) const = 0;
     virtual LootItemVecUPtr GetLootItem(Player const& player) = 0;
+    virtual bool CanLootSlot(ObjectGuid const& targetGuid, uint32 itemSlot);
+    virtual bool IsLootedFor(ObjectGuid const& targetGuid) const = 0;
+    virtual bool IsLootedForAll() const { for (auto guid : m_ownerSet) { if (!IsLootedFor(guid)) return false; } return true; }
+
+
     bool FillLoot(uint32 loot_id, LootStore const& store, bool noEmptyError = false);
     bool AddItem(LootStoreItem const& lootStoreItem);
+    GuidSet const& GetOwnerSet() const { return m_ownerSet; }
     void SetItemSent(LootItemSPtr lootItem, Player* player);
     bool IsItemAlreadyIn(uint32 itemId) const;
+    LootItemSPtr GetLootItemInSlot(uint32 itemSlot);
+    virtual void SendAllowedLooter() {};
+    virtual void OnFailedItemSent(ObjectGuid const& targetGuid, LootItem& lootItem) {};
+
+    template<typename T>
+    void DoWorkOnFullGroup(T work) { for (auto owner : m_ownerSet) { work(owner); }; }
 
     LootItemVec const& GetFullContent() const { return *m_lootItems; }
 
 protected:
     LootBase&        m_loot;
     LootItemVecUPtr  m_lootItems;                     // store of the items contained in loot
+    GuidSet          m_ownerSet;
 };
 
 typedef std::unique_ptr<LootRule> LootRuleUPtr;
@@ -348,6 +276,9 @@ public:
     void Initialize(Player const& player) override;
     bool CanLoot(Player const& player) const override;
     LootItemVecUPtr GetLootItem(Player const& player) override;
+    bool IsLootedFor(ObjectGuid const& targetGuid) const override;
+
+
 
 private:
     bool m_isReleased;
@@ -364,6 +295,7 @@ public:
     void Initialize(Player const& player) override;
     bool CanLoot(Player const& player) const override;
     LootItemVecUPtr GetLootItem(Player const& player) override;
+    bool IsLootedFor(ObjectGuid const& targetGuid) const override;
 
 private:
     ObjectGuid m_ownerGuid;
@@ -400,20 +332,25 @@ public:
 
     bool AddItem(LootStoreItem const& lootStoreItem) {  return m_lootRule->AddItem(lootStoreItem); }
     void SetItemSent(LootItemSPtr lootItem, Player* player) { m_lootRule->SetItemSent(lootItem, player); }
-    void BuildLootPacket(LootItemVec const& lootItems, ByteBuffer& buffer) const;
+    void BuildLootPacket(LootItemVec const* lootItems, ByteBuffer& buffer) const;
     virtual void Release(Player& player) = 0;
 
     // Send methods
-    void SendGold(Player* player);
+    void SendGold(Player& player);
+    void SendReleaseFor(ObjectGuid const& guid);
+    void SendReleaseFor(Player& plr);
+    void SendReleaseForAll();
+    InventoryResult SendItem(Player& target, uint32 itemSlot);
+    WorldObject* GetLootTarget() const { return m_lootTarget; }
     virtual void ShowContentTo(Player& plr) = 0;
 
     // Getters
     virtual bool HaveLoot(Player& player) const { return m_lootRule->CanLoot(player); }
+    bool CanLootSlot(ObjectGuid const& guid, uint32 itemSlot) const { return m_lootRule->CanLootSlot(guid, itemSlot); }
     bool IsItemAlreadyIn(uint32 itemId) const { return m_lootRule->IsItemAlreadyIn(itemId); };
     LootType GetLootType() const { return m_lootType; }
     bool HasBeenInspected() const { return m_inspected; };
-    WorldObject* GetLootTarget() const { return m_lootTarget; }
-    GuidSet const& GetOwnerSet() const { return m_ownerSet; }
+    GuidSet const& GetOwnerSet() const { return m_lootRule->GetOwnerSet(); }
     Player* GetOwner() const { return m_owner; }
 
 
@@ -423,6 +360,13 @@ public:
 
 protected:
     void SetPlayerLootingPose(Player& player, bool looting = true);
+    InventoryResult SendItem(Player& target, LootItemSPtr lootItem);
+
+    void NotifyMoneyRemoved();
+    void NotifyItemRemoved(uint32 lootIndex);
+    void NotifyItemRemoved(Player& player, LootItem& lootItem) const;
+
+    void ForceLootAnimationClientUpdate() const;
 
     WorldObject*     m_lootTarget;
     ClientLootType   m_clientLootType;
@@ -438,6 +382,7 @@ protected:
     GuidSet          m_ownerSet;
 private:
     Player*          m_owner;
+    bool m_isChanged;
 };
 
 class LootSkinning : public LootBase
@@ -600,7 +545,10 @@ class LootMgr
     public:
         void PlayerVote(Player* player, ObjectGuid const& lootTargetGuid, uint32 itemSlot, RollVote vote);
         Loot* GetLoot(Player* player, ObjectGuid const& targetGuid = ObjectGuid()) const;
+        LootBase* FindLoot(Player* player, ObjectGuid const& targetGuid) const;
         void CheckDropStats(ChatHandler& chat, uint32 amountOfCheck, uint32 lootId, std::string lootStore) const;
+
+        LootBaseUPtr GenerateLoot(Player* player, Creature* lootTarget, LootType type);
 };
 
 #define sLootMgr MaNGOS::Singleton<LootMgr>::Instance()

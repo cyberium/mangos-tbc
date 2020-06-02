@@ -8967,17 +8967,19 @@ void Spell::EffectSelfResurrect(SpellEffectIndex eff_idx)
 
 void Spell::EffectSkinning(SpellEffectIndex /*eff_idx*/)
 {
-    if (unitTarget->GetTypeId() != TYPEID_UNIT)
+    if (unitTarget->IsCreature())
         return;
-    if (!m_caster || m_caster->GetTypeId() != TYPEID_PLAYER)
+    if (!m_caster || !m_caster->IsPlayer())
         return;
 
-    Creature* creature = (Creature*) unitTarget;
+    Creature* creature = static_cast<Creature*>(unitTarget);
+    Player* playerCaster = static_cast<Player*>(m_caster);
     int32 targetLevel = creature->getLevel();
 
     uint32 skill = creature->GetCreatureInfo()->GetRequiredLootSkill();
 
     Loot*& loot = unitTarget->m_loot;
+    LootBaseUPtr& loot2 = unitTarget->m_loot2;
 
     if (loot)
     {
@@ -8990,17 +8992,35 @@ void Spell::EffectSkinning(SpellEffectIndex /*eff_idx*/)
 
     if (!loot)
     {
-        loot = new Loot((Player*)m_caster, creature, LOOT_SKINNING);
+        loot = new Loot(playerCaster, creature, LOOT_SKINNING);
 
         int32 reqValue = targetLevel < 10 ? 0 : targetLevel < 20 ? (targetLevel - 10) * 10 : targetLevel * 5;
 
-        int32 skillValue = ((Player*)m_caster)->GetSkillValuePure(skill);
+        int32 skillValue = (playerCaster)->GetSkillValuePure(skill);
 
         // Double chances for elites
-        ((Player*)m_caster)->UpdateGatherSkill(skill, skillValue, reqValue, creature->IsElite() ? 2 : 1);
+        playerCaster->UpdateGatherSkill(skill, skillValue, reqValue, creature->IsElite() ? 2 : 1);
     }
 
-    loot->ShowContentTo((Player*)m_caster);
+    if (loot2)
+    {
+        if (loot2->GetLootType() != LOOT_SKINNING)
+            loot2.reset(nullptr);
+    }
+
+    if (!loot2)
+    {
+        loot2 = sLootMgr.GenerateLoot(playerCaster, creature, LOOT_SKINNING);
+
+        int32 reqValue = targetLevel < 10 ? 0 : targetLevel < 20 ? (targetLevel - 10) * 10 : targetLevel * 5;
+
+        int32 skillValue = playerCaster->GetSkillValuePure(skill);
+
+        // Double chances for elites
+        playerCaster->UpdateGatherSkill(skill, skillValue, reqValue, creature->IsElite() ? 2 : 1);
+    }
+
+    loot2->ShowContentTo(*playerCaster);
     creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_SKINNABLE);
 }
 

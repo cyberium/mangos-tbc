@@ -254,6 +254,7 @@ void Creature::RemoveCorpse(bool inPlace)
     delete m_loot;
     m_loot = nullptr;
     m_lootStatus = CREATURE_LOOT_STATUS_NONE;
+    m_loot2.reset(nullptr);
     uint32 respawnDelay = 0;
 
     if (AI())
@@ -641,6 +642,7 @@ void Creature::Update(const uint32 diff)
                 SetCanAggro(false);
                 delete m_loot;
                 m_loot = nullptr;
+                m_loot2.reset(nullptr);
 
                 // Clear possible auras having IsDeathPersistent() attribute
                 RemoveAllAuras();
@@ -1044,6 +1046,7 @@ void Creature::PrepareBodyLootState()
     // loot may already exist (pickpocket case)
     delete m_loot;
     m_loot = nullptr;
+    m_loot2.reset(nullptr);
 
     if (IsNoLoot())
         SetLootStatus(CREATURE_LOOT_STATUS_LOOTED);
@@ -1052,7 +1055,12 @@ void Creature::PrepareBodyLootState()
         Player* killer = GetLootRecipient();
 
         if (killer)
+        {
             m_loot = new Loot(killer, this, LOOT_CORPSE);
+
+            // create corpse loot
+            m_loot2 = sLootMgr.GenerateLoot(killer, this, LOOT_CORPSE);
+        }
     }
 
     if (m_lootStatus == CREATURE_LOOT_STATUS_LOOTED && !HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_SKINNABLE))

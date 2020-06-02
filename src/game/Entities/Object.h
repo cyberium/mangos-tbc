@@ -31,6 +31,7 @@
 #include "Server/DBCStructure.h"
 #include "PlayerDefines.h"
 #include "Entities/ObjectVisibility.h"
+#include "Loot/LootDefines.h"
 
 #include <set>
 
@@ -104,7 +105,6 @@ class InstanceData;
 class TerrainInfo;
 class TransportInfo;
 struct MangosStringLocale;
-class Loot;
 struct ItemPrototype;
 class ChatHandler;
 struct SpellEntry;
@@ -572,6 +572,7 @@ class Object
         inline bool IsUnit() const { return isType(TYPEMASK_UNIT); }
         inline bool IsGameObject() const { return GetTypeId() == TYPEID_GAMEOBJECT; }
         inline bool IsCorpse() const { return GetTypeId() == TYPEID_CORPSE; }
+        inline bool IsItem() const { return GetTypeId() == TYPEID_ITEM; }
 
     protected:
         Object();
@@ -860,7 +861,7 @@ class WorldObject : public Object
         void AddToClientUpdateList() override;
         void RemoveFromClientUpdateList() override;
         void BuildUpdateData(UpdateDataMapType&) override;
-        
+
         static Creature* SummonCreature(TempSpawnSettings settings, Map* map);
         Creature* SummonCreature(uint32 id, float x, float y, float z, float ang, TempSpawnType spwtype, uint32 despwtime, bool asActiveObject = false, bool setRun = false, uint32 pathId = 0, uint32 faction = 0, uint32 modelId = 0, bool spawnCounting = false, bool forcedOnTop = false);
 
