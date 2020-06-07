@@ -98,12 +98,11 @@ void LootRule::AddSavedItem(uint32 itemid, uint32 count, uint32 randomSuffix, in
     {
         m_lootItems->emplace_back(new LootItem(itemid, count, randomSuffix, randomPropertyId, m_lootItems->size()));
 
+        // we consider here that all saved item are allowed for all owners
+        // wrong if there is more than one player that have access to this item loot
+        // TODO:: check if that case exist and thus manage pickup case
         for (auto owner : m_ownerSet)
-        {
-            Player* plr = ObjectAccessor::FindPlayer(owner);
-            if (plr && m_lootItems->back()->AllowedForPlayer(plr, m_loot.GetLootTarget()))
-                m_lootItems->back()->allowedGuid.emplace(owner);
-        }
+            m_lootItems->back()->allowedGuid.emplace(owner);
     }
 }
 
@@ -185,12 +184,12 @@ void SkinningRule::OnRelease(Player& plr)
 // if container is provided fill it with authorized items
 bool SkinningRule::HaveItemFor(Player const& player, LootItemRightVec* lootItems /*= nullptr*/) const
 {
+    if (lootItems)
+        lootItems->clear();
+
     ObjectGuid pGuid = player.GetObjectGuid();
     if (!m_isReleased && m_ownerSet.find(pGuid) == m_ownerSet.end())
         return false;
-
-    if (lootItems)
-        lootItems->clear();
 
     for (auto& lootItem : *m_lootItems)
     {
@@ -199,7 +198,7 @@ bool SkinningRule::HaveItemFor(Player const& player, LootItemRightVec* lootItems
             continue;
 
         // is this player allowed to loot this item?
-        if (!lootItem->AllowedForPlayer(&player, m_loot.GetLootTarget()))
+        if (!lootItem->IsAllowed(pGuid))
             continue;
 
         // if no container provided we can return true here
@@ -232,6 +231,10 @@ bool SinglePlayerRule::HaveItemFor(Player const& player, LootItemRightVec* lootI
     {
         // item already picked by this player?
         if (lootItem->pickedUpGuid.find(pGuid) != lootItem->pickedUpGuid.end())
+            continue;
+
+        // is this player allowed to loot this item?
+        if (!lootItem->IsAllowed(pGuid))
             continue;
 
         // if no container provided we can return true here

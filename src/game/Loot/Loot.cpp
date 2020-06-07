@@ -608,7 +608,10 @@ LootTypeItem::LootTypeItem(Player& player, Item& lootTarget, LootType type) : Lo
             lootTarget.SetLootState(ITEM_LOOT_CHANGED);
             break;
 
+        // only case is when item is loaded
         default:
+            m_lootType = LOOT_ITEM;
+            lootTarget.SetLootState(ITEM_LOOT_CHANGED);
             break;
     }
 }
@@ -654,6 +657,7 @@ void LootTypeItem::Release(Player& player, bool fromHandler /*= false*/)
             player.DestroyItemCount(item, count, true);
             break;
         }
+
         // temporary loot, auto loot move
         case LOOT_DISENCHANTING:
         {
@@ -664,15 +668,22 @@ void LootTypeItem::Release(Player& player, bool fromHandler /*= false*/)
             player.DestroyItem(item->GetBagSlot(), item->GetSlot(), true);
             break;
         }
+
         // normal persistence loot
-        default:
+        case LOOT_ITEM:
         {
             // must be destroyed only if no loot
-            if (m_lootRule->HaveItemFor(player))
+            if (!m_lootRule->HaveItemFor(player))
             {
                 item->SetLootState(ITEM_LOOT_REMOVED);
                 player.DestroyItem(item->GetBagSlot(), item->GetSlot(), true);
             }
+            break;
+        }
+
+        default:
+        {
+            // Should not happen
             break;
         }
     }

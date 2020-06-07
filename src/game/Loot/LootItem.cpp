@@ -291,25 +291,6 @@ LootSlotType LootItem::GetSlotTypeForSharedLoot(Player const* player, Loot const
     }
 }
 
-bool LootItem::IsAllowed(Player const* player, Loot const* loot) const
-{
-    if (!loot->m_isChest)
-    {
-        if (loot->m_lootMethod != NOT_GROUP_TYPE_LOOT)
-            return allowedGuid.find(player->GetObjectGuid()) != allowedGuid.end();
-
-        if (allowedGuid.empty())
-            return AllowedForPlayer(player, loot->GetLootTarget());
-
-        return false;
-    }
-
-    if (allowedGuid.empty() || (freeForAll && allowedGuid.find(player->GetObjectGuid()) == allowedGuid.end()))
-        return AllowedForPlayer(player, loot->GetLootTarget());
-
-    return false;
-}
-
 std::string LootItem::ToString() const
 {
     std::stringstream ss;

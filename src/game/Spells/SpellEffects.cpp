@@ -4516,7 +4516,7 @@ void Spell::EffectOpenLock(SpellEffectIndex eff_idx)
         // only send loot if owner is player, else client sends release anyway
         if (itemTarget->GetOwnerGuid() == m_caster->GetObjectGuid())
         {
-            SendLoot(itemTarget->GetObjectGuid(), LOOT_SKINNING, LockType(m_spellInfo->EffectMiscValue[eff_idx]));
+            SendLoot(itemTarget->GetObjectGuid(), LOOT_ITEM, LockType(m_spellInfo->EffectMiscValue[eff_idx]));
             m_spellLog.AddLog(uint32(SPELL_EFFECT_OPEN_LOCK), itemTarget->GetPackGUID());
         }
     }

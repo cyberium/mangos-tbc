@@ -259,7 +259,7 @@ void WorldSession::HandleOpenItemOpcode(WorldPacket& recvPacket)
     {
         auto& loot = pItem->m_loot2;
         if (!loot)
-            loot = sLootMgr.GenerateLoot(pUser, pItem, LOOT_PICKPOCKETING);
+            loot = sLootMgr.GenerateLoot(pUser, pItem, LOOT_ITEM);
 
         loot->ShowContentTo(*pUser);
     }

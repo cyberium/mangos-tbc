@@ -61,7 +61,8 @@ struct LootItem
     // Basic checks for player/item compatibility - if false no chance to see the item in the loot
     bool AllowedForPlayer(Player const* player, Object const* lootTarget) const;
     LootSlotType GetSlotTypeForSharedLoot(Player const* player, Loot const* loot) const;
-    bool IsAllowed(Player const* player, Loot const* loot) const;
+    bool IsAllowed(Player const* player, Loot const* loot) const { return false; }
+    bool IsAllowed(ObjectGuid const& guid) const { return allowedGuid.find(guid) != allowedGuid.end(); }
 
     std::string ToString() const;
 };
