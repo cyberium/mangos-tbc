@@ -27,6 +27,7 @@
 #include "World/World.h"
 #include "Database/DatabaseEnv.h"
 #include "Loot/LootMgr.h"
+#include "Loot/Loot.h"
 #include "Grids/GridNotifiers.h"
 #include "Grids/GridNotifiersImpl.h"
 #include "Grids/CellImpl.h"
@@ -310,8 +311,7 @@ void GameObject::Update(const uint32 diff)
                             {
                                 m_reStockTimer = 0;
                                 m_lootState = GO_READY;
-                                delete m_loot;
-                                m_loot = nullptr;
+                                m_loot2.reset(nullptr);
                                 ForceValuesUpdateAtIndex(GAMEOBJECT_DYN_FLAGS);
                             }
                         }
@@ -400,7 +400,7 @@ void GameObject::Update(const uint32 diff)
                             {
                                 if (m_respawnTime > 0)
                                     valid = false;
-                                else // battlegrounds gameobjects has data2 == 0 && data5 == 3                                
+                                else // battlegrounds gameobjects has data2 == 0 && data5 == 3
                                     radius = float(goInfo->trap.cooldown);
                             }
                         }
@@ -469,14 +469,14 @@ void GameObject::Update(const uint32 diff)
                         ResetDoorOrButton();
                     break;
                 case GAMEOBJECT_TYPE_CHEST:
-                    if (m_loot)
+                    if (m_loot2)
                     {
-                        if (m_loot->IsChanged())
+                        if (m_loot2->IsChanged())
                             m_despawnTimer = time(nullptr) + 5 * MINUTE; // TODO:: need to add a define?
                         else if (m_despawnTimer != 0 && m_despawnTimer <= time(nullptr))
                             m_lootState = GO_JUST_DEACTIVATED;
 
-                        m_loot->Update();
+                        m_loot2->Update(diff);
                     }
                     break;
                 case GAMEOBJECT_TYPE_TRAP:
@@ -595,8 +595,7 @@ void GameObject::Update(const uint32 diff)
                     SetUInt32Value(GAMEOBJECT_FLAGS, GetGOInfo()->flags);
             }
 
-            delete m_loot;
-            m_loot = nullptr;
+            m_loot2.reset(nullptr);
             SetLootRecipient(nullptr);
             SetLootState(GO_READY);
 
@@ -1599,9 +1598,8 @@ void GameObject::Use(Unit* user)
                         }
                         else
                         {
-                            delete m_loot;
-                            m_loot = new Loot(player, this, success ? LOOT_FISHING : LOOT_FISHING_FAIL);
-                            m_loot->ShowContentTo(player);
+                            m_loot2 = sLootMgr.GenerateLoot(player, this, success ? LOOT_FISHING : LOOT_FISHING_FAIL);
+                            m_loot2->ShowContentTo(*player);
                         }
                     }
                     else
@@ -1775,10 +1773,9 @@ void GameObject::Use(Unit* user)
                 return;
 
             Player* player = (Player*)user;
-            
-            delete m_loot;
-            m_loot = new Loot(player, this, LOOT_FISHINGHOLE);
-            m_loot->ShowContentTo(player);
+
+            m_loot2 = sLootMgr.GenerateLoot(player, this, LOOT_FISHINGHOLE);
+            m_loot2->ShowContentTo(*player);
 
             return;
         }

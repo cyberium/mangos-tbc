@@ -56,6 +56,7 @@
 #include "Loot/LootMgr.h"
 #include "Movement/MoveSpline.h"
 #include "AI/ScriptDevAI/include/sc_grid_searchers.h"
+#include "Loot/Loot.h"
 
 pEffect SpellEffects[MAX_SPELL_EFFECTS] =
 {
@@ -4346,6 +4347,7 @@ void Spell::EffectEnergisePct(SpellEffectIndex eff_idx)
 
 void Spell::SendLoot(ObjectGuid guid, LootType loottype, LockType lockType)
 {
+    Player* playerCaster = static_cast<Player*>(m_caster);
     switch (guid.GetHigh())
     {
         case HIGHGUID_GAMEOBJECT:
@@ -4387,13 +4389,13 @@ void Spell::SendLoot(ObjectGuid guid, LootType loottype, LockType lockType)
                 if (m_caster->GetTypeId() != TYPEID_PLAYER)
                     return;
 
-                Loot*& loot = gameObjTarget->m_loot;
+                auto& loot = gameObjTarget->m_loot2;
                 if (!loot)
                 {
-                    loot = new Loot((Player*)m_caster, gameObjTarget, loottype);
+                    loot = sLootMgr.GenerateLoot(playerCaster, gameObjTarget, loottype);
                     TakeCastItem();
                 }
-                loot->ShowContentTo((Player*)m_caster);
+                loot->ShowContentTo(*playerCaster);
                 return;
             }
             break;
@@ -4403,13 +4405,13 @@ void Spell::SendLoot(ObjectGuid guid, LootType loottype, LockType lockType)
         {
             if (itemTarget)
             {
-                Loot*& loot = itemTarget->m_loot;
+                auto& loot = itemTarget->m_loot2;
                 if (!loot)
                 {
-                    loot = new Loot((Player*)m_caster, itemTarget, loottype);
+                    loot = sLootMgr.GenerateLoot(playerCaster, itemTarget, loottype);
                     TakeCastItem();
                 }
-                loot->ShowContentTo((Player*)m_caster);
+                loot->ShowContentTo(*playerCaster);
                 return;
             }
 
@@ -4491,14 +4493,14 @@ void Spell::EffectOpenLock(SpellEffectIndex eff_idx)
         // update skill if really known
         if (uint32 pureSkillValue = player->GetSkillValuePure(skillId))
         {
-            if (gameObjTarget && !gameObjTarget->m_loot)
+            if (gameObjTarget && !gameObjTarget->m_loot2)
             {
                 // Allow one skill-up until respawned
                 if (!gameObjTarget->IsInSkillupList(player) &&
                         player->UpdateGatherSkill(skillId, pureSkillValue, reqSkillValue))
                     gameObjTarget->AddToSkillupList(player);
             }
-            else if (itemTarget && !itemTarget->m_loot)
+            else if (itemTarget && !itemTarget->m_loot2)
             {
                 // Do one skill-up
                 player->UpdateGatherSkill(skillId, pureSkillValue, reqSkillValue);
@@ -5223,9 +5225,9 @@ void Spell::EffectPickPocket(SpellEffectIndex /*eff_idx*/)
         // Stealing successful
         //BASIC_LOG("Successfull pickpocket result %i for chance %i", result, chance);
 
-        Loot*& loot = unitTarget->m_loot;
+        auto& loot = unitTarget->m_loot2;
         if (!loot)
-            loot = new Loot(playerCaster, creatureTarget, LOOT_PICKPOCKETING);
+            loot = sLootMgr.GenerateLoot(playerCaster, creatureTarget, LOOT_PICKPOCKETING);
         else
         {
             if (loot->GetLootType() == LOOT_PICKPOCKETING)
@@ -5235,8 +5237,7 @@ void Spell::EffectPickPocket(SpellEffectIndex /*eff_idx*/)
                     if (creatureTarget->CanRestockPickpocketLoot())
                     {
                         // refill pickpocket
-                        delete loot;
-                        loot = new Loot(playerCaster, creatureTarget, LOOT_PICKPOCKETING);
+                        loot = sLootMgr.GenerateLoot(playerCaster, creatureTarget, LOOT_PICKPOCKETING);
                     }
                     else
                     {
@@ -5247,11 +5248,10 @@ void Spell::EffectPickPocket(SpellEffectIndex /*eff_idx*/)
             }
             else
             {
-                delete loot;
-                loot = new Loot(playerCaster, creatureTarget, LOOT_PICKPOCKETING);
+                loot = sLootMgr.GenerateLoot(playerCaster, creatureTarget, LOOT_PICKPOCKETING);
             }
         }
-        loot->ShowContentTo(playerCaster);
+        loot->ShowContentTo(*playerCaster);
     }
     else
     {
@@ -8664,19 +8664,16 @@ void Spell::EffectDisEnchant(SpellEffectIndex /*eff_idx*/)
 
     p_caster->UpdateCraftSkill(m_spellInfo->Id);
 
-    Loot*& loot = itemTarget->m_loot;
+    auto& loot = itemTarget->m_loot2;
     if (!loot)
-        loot = new Loot(p_caster, itemTarget, LOOT_DISENCHANTING);
+        loot = sLootMgr.GenerateLoot(p_caster, itemTarget, LOOT_DISENCHANTING);
     else
     {
         if (loot->GetLootType() != LOOT_DISENCHANTING)
-        {
-            delete loot;
-            loot = new Loot(p_caster, itemTarget, LOOT_DISENCHANTING);
-        }
+            loot = sLootMgr.GenerateLoot(p_caster, itemTarget, LOOT_DISENCHANTING);
     }
 
-    loot->ShowContentTo(p_caster);
+    loot->ShowContentTo(*p_caster);
 
     // item will be removed at disenchanting end
 }
@@ -8967,7 +8964,7 @@ void Spell::EffectSelfResurrect(SpellEffectIndex eff_idx)
 
 void Spell::EffectSkinning(SpellEffectIndex /*eff_idx*/)
 {
-    if (unitTarget->IsCreature())
+    if (!unitTarget->IsCreature())
         return;
     if (!m_caster || !m_caster->IsPlayer())
         return;
@@ -8978,10 +8975,9 @@ void Spell::EffectSkinning(SpellEffectIndex /*eff_idx*/)
 
     uint32 skill = creature->GetCreatureInfo()->GetRequiredLootSkill();
 
-    Loot*& loot = unitTarget->m_loot;
     LootBaseUPtr& loot2 = unitTarget->m_loot2;
 
-    if (loot)
+    /*if (loot)
     {
         if (loot->GetLootType() != LOOT_SKINNING)
         {
@@ -9000,7 +8996,7 @@ void Spell::EffectSkinning(SpellEffectIndex /*eff_idx*/)
 
         // Double chances for elites
         playerCaster->UpdateGatherSkill(skill, skillValue, reqValue, creature->IsElite() ? 2 : 1);
-    }
+    }*/
 
     if (loot2)
     {
@@ -9522,12 +9518,10 @@ void Spell::EffectProspecting(SpellEffectIndex /*eff_idx*/)
         p_caster->UpdateGatherSkill(SKILL_JEWELCRAFTING, SkillValue, reqSkillValue);
     }
 
-    Loot*& loot = itemTarget->m_loot;
-    delete loot;
+    auto& loot = itemTarget->m_loot2;
+    loot = sLootMgr.GenerateLoot(p_caster, itemTarget, LOOT_PROSPECTING);
 
-    loot = new Loot(p_caster, itemTarget, LOOT_PROSPECTING);
-
-    loot->ShowContentTo(p_caster);
+    loot->ShowContentTo(*p_caster);
 }
 
 void Spell::EffectSkill(SpellEffectIndex /*eff_idx*/)

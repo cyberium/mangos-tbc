@@ -25,6 +25,7 @@
 #include "Server/SQLStorages.h"
 #include "Loot/LootMgr.h"
 #include "Spells/SpellTargetDefines.h"
+#include "Loot/Loot.h"
 
 void AddItemsSetItem(Player* player, Item* item)
 {
@@ -375,7 +376,7 @@ void Item::SaveToDB()
         stmt.PExecute(GetGUIDLow());
     }
 
-    if (m_loot && (m_lootState == ITEM_LOOT_NEW || m_lootState == ITEM_LOOT_CHANGED))
+    if (m_loot2 && (m_lootState == ITEM_LOOT_NEW || m_lootState == ITEM_LOOT_CHANGED))
     {
         if (Player* owner = GetOwner())
         {
@@ -383,20 +384,23 @@ void Item::SaveToDB()
             static SqlStatementID saveLoot ;
 
             // save money as 0 itemid data
-            if (m_loot->GetGoldAmount())
+            if (m_loot2->GetGoldAmount())
             {
                 SqlStatement stmt = CharacterDatabase.CreateStatement(saveGold, "INSERT INTO item_loot (guid,owner_guid,itemid,amount,suffix,property) VALUES (?, ?, 0, ?, 0, 0)");
-                stmt.PExecute(GetGUIDLow(), owner->GetGUIDLow(), m_loot->GetGoldAmount());
+                stmt.PExecute(GetGUIDLow(), owner->GetGUIDLow(), m_loot2->GetGoldAmount());
             }
 
             SqlStatement stmt = CharacterDatabase.CreateStatement(saveLoot, "INSERT INTO item_loot (guid,owner_guid,itemid,amount,suffix,property) VALUES (?, ?, ?, ?, ?, ?)");
 
             // save items and quest items (at load its all will added as normal, but this not important for item loot case)
-            LootItemList lootList;
-            m_loot->GetLootItemsListFor(owner, lootList);
-            for (LootItemList::const_iterator lootItr = lootList.begin(); lootItr != lootList.end(); ++lootItr)
+            LootItemRightVec lootRightItems;
+            m_loot2->GetLootFor(*owner, &lootRightItems);
+            for (auto lootRightItem : lootRightItems)
             {
-                LootItem* lootItem = *lootItr;
+                if (lootRightItem.slotType != LOOT_SLOT_OWNER)
+                    continue;
+
+                auto& lootItem = lootRightItem.lootItem;
                 stmt.addUInt32(GetGUIDLow());
                 stmt.addUInt32(owner->GetGUIDLow());
                 stmt.addUInt32(lootItem->itemId);
@@ -525,7 +529,7 @@ void Item::LoadLootFromDB(Field* fields)
     // money value special case
     if (item_id == 0)
     {
-        m_loot->SetGoldAmount(item_amount);
+        m_loot2->SetGoldAmount(item_amount);
         SetLootState(ITEM_LOOT_UNCHANGED);
         return;
     }
@@ -540,7 +544,7 @@ void Item::LoadLootFromDB(Field* fields)
         return;
     }
 
-    m_loot->AddItem(item_id, item_amount, item_suffix, item_propid);
+    m_loot2->AddSavedItem(item_id, item_amount, item_suffix, item_propid);
 
     SetLootState(ITEM_LOOT_UNCHANGED);
 }

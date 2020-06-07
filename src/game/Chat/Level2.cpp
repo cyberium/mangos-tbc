@@ -26,6 +26,7 @@
 #include "Entities/TemporarySpawn.h"
 #include "Entities/Totem.h"
 #include "Entities/Pet.h"
+#include "Loot/Loot.h"
 #include "AI/BaseAI/CreatureAI.h"
 #include "Entities/GameObject.h"
 #include "Server/Opcodes.h"
@@ -2232,13 +2233,13 @@ bool ChatHandler::HandleNpcShowLootCommand(char* /*args*/)
         return false;
     }
 
-    if (!creature->m_loot)
+    if (!creature->m_loot2)
     {
         PSendSysMessage("Creature does not have any loot.");
         return true;
     }
 
-    creature->m_loot->PrintLootList(*this, m_session);
+    creature->m_loot2->PrintLootList(*this, m_session);
     return true;
 }
 

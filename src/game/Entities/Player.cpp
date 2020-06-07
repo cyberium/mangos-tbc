@@ -61,7 +61,9 @@
 #include "Mails/Mail.h"
 #include "Server/DBCStores.h"
 #include "Server/SQLStorages.h"
+#include "Loot/LootDefines.h"
 #include "Loot/LootMgr.h"
+#include "Loot/Loot.h"
 #include "World/WorldStateDefines.h"
 #include "World/WorldState.h"
 
@@ -8023,19 +8025,11 @@ void Player::RemovedInsignia(Player* looterPlr)
     // We retrieve this information at Player::SendLoot()
     bones->lootRecipient = looterPlr;
 
-    Loot*& bonesLoot = bones->m_loot;
-    if (!bonesLoot)
-        bonesLoot = new Loot(looterPlr, bones, LOOT_INSIGNIA);
-    else
-    {
-        if (bonesLoot->GetLootType() != LOOT_INSIGNIA)
-        {
-            delete bonesLoot;
-            bonesLoot = new Loot(looterPlr, bones, LOOT_INSIGNIA);
-        }
-    }
+    auto& bonesLoot = bones->m_loot2;
+    if (!bonesLoot || bonesLoot->GetLootType() != LOOT_INSIGNIA)
+        bonesLoot = sLootMgr.GenerateLoot(looterPlr, bones);
 
-    bonesLoot->ShowContentTo(looterPlr);
+    bonesLoot->ShowContentTo(*looterPlr);
 }
 
 void Player::SendUpdateWorldState(uint32 Field, uint32 Value) const
@@ -15732,8 +15726,8 @@ void Player::_LoadItemLoot(QueryResult* result)
                 continue;
             }
 
-            if (!item->m_loot)
-                item->m_loot = new Loot(this, item);
+            if (!item->m_loot2)
+                item->m_loot2 = sLootMgr.GenerateLoot(this, item, LOOT_NONE);
 
             item->LoadLootFromDB(fields);
         }

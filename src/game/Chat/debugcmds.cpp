@@ -34,6 +34,7 @@
 #include "AI/ScriptDevAI/ScriptDevAIMgr.h"
 #include "Maps/InstanceData.h"
 #include "Cinematics/M2Stores.h"
+#include "Loot/Loot.h"
 
 bool ChatHandler::HandleDebugSendSpellFailCommand(char* args)
 {
@@ -1369,14 +1370,14 @@ bool ChatHandler::HandleDebugLootDropStats(char* args)
     {
         sLog.outString("Corpse loot");
         {
-            LootCorpseSingle loot(*GetPlayer(), *target);
+            LootTypeCorpseSingle loot(*GetPlayer(), *target);
             loot.PrintLootList();
             loot.ShowContentTo(*GetPlayer());
         }
 
         sLog.outString("Skinning loot");
         {
-            LootSkinning loot(*GetPlayer(), *target);
+            LootTypeSkinning loot(*GetPlayer(), *target);
             loot.PrintLootList();
         }
     }

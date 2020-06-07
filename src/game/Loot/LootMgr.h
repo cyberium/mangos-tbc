@@ -27,18 +27,24 @@
 
 #include <vector>
 #include "Entities/Bag.h"
+#include "LootGroupRoll.h"
+#include "LootRules.h"
+#include "LootStore.h"
 
 
 #define LOOT_ROLL_TIMEOUT  (1*MINUTE*IN_MILLISECONDS)
 
 class Player;
+class GameObject;
+class Corpse;
+class Item;
 class Group;
 class LootStore;
 class WorldObject;
 class LootTemplate;
 class Loot;
 
-class LootSkinning;
+class LootTypeSkinning;
 class LootRule;
 class SkinningRule;
 
@@ -46,362 +52,12 @@ class WorldSession;
 struct LootItem;
 struct ItemPrototype;
 
-struct PlayerRollVote
-{
-    PlayerRollVote() : vote(ROLL_NOT_VALID), number(0) {}
-    RollVote vote;
-    uint8    number;
-};
-
-class GroupLootRoll
-{
-    public:
-        typedef std::unordered_map<ObjectGuid, PlayerRollVote> RollVoteMap;
-
-        GroupLootRoll() : m_rollVoteMap(ROLL_VOTE_MASK_ALL), m_isStarted(false), m_lootItem(nullptr), m_loot(nullptr), m_itemSlot(0), m_voteMask(), m_endTime(0)
-        {}
-        ~GroupLootRoll();
-
-        bool TryToStart(Loot& loot, uint32 itemSlot);
-        bool PlayerVote(Player* player, RollVote vote);
-        bool UpdateRoll();
-
-    private:
-        void SendStartRoll();
-        void SendAllPassed();
-        void SendRoll(ObjectGuid const& targetGuid, uint32 rollNumber, uint32 rollType);
-        void SendLootRollWon(ObjectGuid const& targetGuid, uint32 rollNumber, RollVote rollType);
-        void Finish(RollVoteMap::const_iterator& winnerItr);
-        bool AllPlayerVoted(RollVoteMap::const_iterator& winnerItr);
-        RollVoteMap           m_rollVoteMap;
-        bool                  m_isStarted;
-        LootItem*             m_lootItem;
-        Loot*                 m_loot;
-        uint32                m_itemSlot;
-        RollVoteMask          m_voteMask;
-        time_t                m_endTime;
-};
-typedef std::unordered_map<uint32, GroupLootRoll> GroupLootRollMap;
-
-struct LootStoreItem
-{
-    uint32  itemid;                                         // id of the item
-    float   chance;                                         // always positive, chance to drop for both quest and non-quest items, chance to be used for refs
-    int32   mincountOrRef;                                  // mincount for drop items (positive) or minus referenced TemplateleId (negative)
-    uint8   group       : 7;
-    bool    needs_quest : 1;                                // quest drop (negative ChanceOrQuestChance in DB)
-    uint8   maxcount    : 8;                                // max drop count for the item (mincountOrRef positive) or Ref multiplicator (mincountOrRef negative)
-    uint16  conditionId : 16;                               // additional loot condition Id
-
-    // Constructor, converting ChanceOrQuestChance -> (chance, needs_quest)
-    // displayid is filled in IsValid() which must be called after
-    LootStoreItem(uint32 _itemid, float _chanceOrQuestChance, int8 _group, uint16 _conditionId, int32 _mincountOrRef, uint8 _maxcount)
-        : itemid(_itemid), chance(fabs(_chanceOrQuestChance)), mincountOrRef(_mincountOrRef),
-          group(_group), needs_quest(_chanceOrQuestChance < 0), maxcount(_maxcount), conditionId(_conditionId)
-    {}
-
-    bool Roll(bool rate) const;                             // Checks if the entry takes it's chance (at loot generation)
-    bool IsValid(LootStore const& store, uint32 entry) const;
-    // Checks correctness of values
-};
-
-struct LootItem
-{
-    uint32       itemId;
-    uint32       randomSuffix;
-    int32        randomPropertyId;
-    uint32       displayID;
-    LootItemType lootItemType;
-    GuidSet      allowedGuid;                                       // player's that have right to loot this item
-    GuidSet      pickedUpGuid;                                      // player's that have already picked the item
-    uint32       lootSlot;                                          // the slot number will be send to client
-    LootSlotType slotType;                                          // slot type
-    uint16       conditionId       : 16;                            // allow compiler pack structure
-    uint8        count             : 8;
-    bool         isBlocked         : 1;
-    bool         freeForAll        : 1;                             // free for all
-    bool         isUnderThreshold  : 1;
-    bool         currentLooterPass : 1;
-    bool         isReleased        : 1;                             // true if item is released by looter or by roll system
-    bool         pickedUp          : 1;
-
-    // storing item prototype for fast access
-    ItemPrototype const* itemProto;
-
-    // Constructor, copies most fields from LootStoreItem, generates random count and random suffixes/properties
-    // Should be called for non-reference LootStoreItem entries only (mincountOrRef > 0)
-    explicit LootItem(LootStoreItem const& li, uint32 _lootSlot, uint32 threshold);
-    explicit LootItem(LootStoreItem const& li, uint32 _lootSlot);
-
-    LootItem(uint32 _itemId, uint32 _count, uint32 _randomSuffix, int32 _randomPropertyId, uint32 _lootSlot);
-
-    // Basic checks for player/item compatibility - if false no chance to see the item in the loot
-    bool AllowedForPlayer(Player const* player, WorldObject const* lootTarget) const;
-    LootSlotType GetSlotTypeForSharedLoot(Player const* player, Loot const* loot) const;
-    bool IsAllowed(Player const* player, Loot const* loot) const;
-
-    std::string ToString() const;
-};
-
-
-typedef std::shared_ptr<LootItem> LootItemSPtr;
-typedef std::vector<LootItemSPtr> LootItemVec;
-typedef std::shared_ptr<LootItemVec> LootItemVecSPtr;
-typedef std::unique_ptr<LootItemVec> LootItemVecUPtr;
-
-struct LootItemRuleData
-{
-public:
-    LootItemSPtr lootItem;
-    GuidSet lootedGuid;
-};
-typedef std::map<uint32, LootItemRuleData> LootItemGuidTrackerMap;
-
-
-
-typedef std::vector<LootItem*> LootItemList;
-typedef std::unique_ptr<LootStoreItem> LootStoreItemUPtr;
-typedef std::vector<LootStoreItem> LootStoreItemList;
-typedef std::unordered_map<uint32, LootTemplate*> LootTemplateMap;
-typedef std::set<uint32> LootIdSet;
-
-class LootStore
-{
-    public:
-        explicit LootStore(char const* name, char const* entryName, bool ratesAllowed)
-            : m_name(name), m_entryName(entryName), m_ratesAllowed(ratesAllowed) {}
-        virtual ~LootStore() { Clear(); }
-
-        void Verify() const;
-
-        void LoadAndCollectLootIds(LootIdSet& ids_set);
-        void CheckLootRefs(LootIdSet* ref_set = nullptr) const; // check existence reference and remove it from ref_set
-        void ReportUnusedIds(LootIdSet const& ids_set) const;
-        void ReportNotExistedId(uint32 id) const;
-
-        bool HaveLootFor(uint32 loot_id) const { return m_LootTemplates.find(loot_id) != m_LootTemplates.end(); }
-        bool HaveQuestLootFor(uint32 loot_id) const;
-        bool HaveQuestLootForPlayer(uint32 loot_id, Player* player) const;
-
-        LootTemplate const* GetLootFor(uint32 loot_id) const;
-
-        char const* GetName() const { return m_name; }
-        char const* GetEntryName() const { return m_entryName; }
-        bool IsRatesAllowed() const { return m_ratesAllowed; }
-    protected:
-        void LoadLootTable();
-        void Clear();
-    private:
-        LootTemplateMap m_LootTemplates;
-        char const* m_name;
-        char const* m_entryName;
-        bool m_ratesAllowed;
-};
-
-class LootTemplate
-{
-        class  LootGroup;                                   // A set of loot definitions for items (refs are not allowed inside)
-        typedef std::vector<LootGroup> LootGroups;
-
-    public:
-        // Adds an entry to the group (at loading stage)
-        void AddEntry(LootStoreItem& item);
-        // Rolls for every item in the template and adds the rolled items the the loot
-        void Process(Loot& loot, Player const* lootOwner, LootStore const& store, bool rate, uint8 groupId = 0) const;
-        void Process(LootBase& loot, LootStore const& store, uint8 groupId = 0) const;
-        // True if template includes at least 1 quest drop entry
-        bool HasQuestDrop(LootTemplateMap const& store, uint8 groupId = 0) const;
-        // True if template includes at least 1 quest drop for an active quest of the player
-        bool HasQuestDropForPlayer(LootTemplateMap const& store, Player const* player, uint8 groupId = 0) const;
-        // True if at least one player fulfill loot condition
-        static bool PlayerOrGroupFulfilsCondition(const Loot& loot, Player const* lootOwner, uint16 conditionId);
-        static bool FulfillConditions(LootBase const& loot, uint16 conditionId);
-        // Checks integrity of the template
-        void Verify(LootStore const& lootstore, uint32 id) const;
-        void CheckLootRefs(LootIdSet* ref_set) const;
-    private:
-        LootStoreItemList Entries;                          // not grouped only
-        LootGroups        Groups;                           // groups have own (optimized) processing, grouped entries go there
-};
 
 //=====================================================
 
-ByteBuffer& operator<<(ByteBuffer& b, LootItem const& li);
 
-//////////////////////////////////////////////////////////////////////////
-// Base class for loot rules
-//////////////////////////////////////////////////////////////////////////
-class LootRule
-{
-public:
-    LootRule(LootBase& loot) : m_loot(loot), m_lootItems(new LootItemVec()) { m_lootItems->reserve(MAX_NR_LOOT_ITEMS); }
+typedef std::vector<LootItem*> LootItemList;
 
-    virtual void Initialize(Player const& player) = 0;
-    virtual bool CanLoot(Player const& player) const = 0;
-    virtual LootItemVecUPtr GetLootItem(Player const& player) = 0;
-    virtual bool CanLootSlot(ObjectGuid const& targetGuid, uint32 itemSlot);
-    virtual bool IsLootedFor(ObjectGuid const& targetGuid) const = 0;
-    virtual bool IsLootedForAll() const { for (auto guid : m_ownerSet) { if (!IsLootedFor(guid)) return false; } return true; }
-
-
-    bool FillLoot(uint32 loot_id, LootStore const& store, bool noEmptyError = false);
-    bool AddItem(LootStoreItem const& lootStoreItem);
-    GuidSet const& GetOwnerSet() const { return m_ownerSet; }
-    void SetItemSent(LootItemSPtr lootItem, Player* player);
-    bool IsItemAlreadyIn(uint32 itemId) const;
-    LootItemSPtr GetLootItemInSlot(uint32 itemSlot);
-    virtual void SendAllowedLooter() {};
-    virtual void OnFailedItemSent(ObjectGuid const& targetGuid, LootItem& lootItem) {};
-
-    template<typename T>
-    void DoWorkOnFullGroup(T work) { for (auto owner : m_ownerSet) { work(owner); }; }
-
-    LootItemVec const& GetFullContent() const { return *m_lootItems; }
-
-protected:
-    LootBase&        m_loot;
-    LootItemVecUPtr  m_lootItems;                     // store of the items contained in loot
-    GuidSet          m_ownerSet;
-};
-
-typedef std::unique_ptr<LootRule> LootRuleUPtr;
-
-// Skinning loot handling
-class SkinningRule : public LootRule
-{
-public:
-    SkinningRule(LootBase& loot) : LootRule(loot), m_isReleased(false) {}
-    SkinningRule() = delete;
-
-    void Initialize(Player const& player) override;
-    bool CanLoot(Player const& player) const override;
-    LootItemVecUPtr GetLootItem(Player const& player) override;
-    bool IsLootedFor(ObjectGuid const& targetGuid) const override;
-
-
-
-private:
-    bool m_isReleased;
-    ObjectGuid m_skinnerGuid;
-};
-
-// Single player rule loot handling
-class SinglePlayerRule : public LootRule
-{
-public:
-    SinglePlayerRule(LootBase& loot) : LootRule(loot) {}
-    SinglePlayerRule() = delete;
-
-    void Initialize(Player const& player) override;
-    bool CanLoot(Player const& player) const override;
-    LootItemVecUPtr GetLootItem(Player const& player) override;
-    bool IsLootedFor(ObjectGuid const& targetGuid) const override;
-
-private:
-    ObjectGuid m_ownerGuid;
-};
-
-
-
-class GroupLootBaseRule : public LootRule
-{
-public:
-    GroupLootBaseRule(LootBase& loot) : LootRule(loot) {}
-    GroupLootBaseRule() = delete;
-
-protected:
-    GuidSet          m_ownerSet;                      // set of all player who have right to the loot
-};
-
-
-
-//////////////////////////////////////////////////////////////////////////
-// Base class for loot
-//////////////////////////////////////////////////////////////////////////
-
-class LootBase
-{
-    friend struct LootItem;
-    friend class GroupLootRoll;
-    friend class LootMgr;
-
-public:
-    LootBase(LootType lType, WorldObject* lootTarget) :
-        m_lootType(lType), m_inspected(false), m_lootTarget(lootTarget) {}
-
-
-    bool AddItem(LootStoreItem const& lootStoreItem) {  return m_lootRule->AddItem(lootStoreItem); }
-    void SetItemSent(LootItemSPtr lootItem, Player* player) { m_lootRule->SetItemSent(lootItem, player); }
-    void BuildLootPacket(LootItemVec const* lootItems, ByteBuffer& buffer) const;
-    virtual void Release(Player& player) = 0;
-
-    // Send methods
-    void SendGold(Player& player);
-    void SendReleaseFor(ObjectGuid const& guid);
-    void SendReleaseFor(Player& plr);
-    void SendReleaseForAll();
-    InventoryResult SendItem(Player& target, uint32 itemSlot);
-    WorldObject* GetLootTarget() const { return m_lootTarget; }
-    virtual void ShowContentTo(Player& plr) = 0;
-
-    // Getters
-    virtual bool HaveLoot(Player& player) const { return m_lootRule->CanLoot(player); }
-    bool CanLootSlot(ObjectGuid const& guid, uint32 itemSlot) const { return m_lootRule->CanLootSlot(guid, itemSlot); }
-    bool IsItemAlreadyIn(uint32 itemId) const { return m_lootRule->IsItemAlreadyIn(itemId); };
-    LootType GetLootType() const { return m_lootType; }
-    bool HasBeenInspected() const { return m_inspected; };
-    GuidSet const& GetOwnerSet() const { return m_lootRule->GetOwnerSet(); }
-    Player* GetOwner() const { return m_owner; }
-
-
-    // Utile
-    void PrintLootList() const;
-
-
-protected:
-    void SetPlayerLootingPose(Player& player, bool looting = true);
-    InventoryResult SendItem(Player& target, LootItemSPtr lootItem);
-
-    void NotifyMoneyRemoved();
-    void NotifyItemRemoved(uint32 lootIndex);
-    void NotifyItemRemoved(Player& player, LootItem& lootItem) const;
-
-    void ForceLootAnimationClientUpdate() const;
-
-    WorldObject*     m_lootTarget;
-    ClientLootType   m_clientLootType;
-    LootType         m_lootType;
-
-    bool             m_inspected;
-
-    uint32           m_gold;                          // amount of money contained in loot
-    GuidSet          m_playersLooting;                // player who opened loot windows
-
-    LootRuleUPtr     m_lootRule;
-
-    GuidSet          m_ownerSet;
-private:
-    Player*          m_owner;
-    bool m_isChanged;
-};
-
-class LootSkinning : public LootBase
-{
-public:
-    LootSkinning(Player& player, Creature& lootTarget);
-    //bool HaveLoot(Player& player) const override;
-    void ShowContentTo(Player& plr) override;
-    void Release(Player& player) override;
-};
-
-class LootCorpseSingle : public LootBase
-{
-public:
-    LootCorpseSingle(Player& player, Creature& lootTarget);
-    //bool HaveLoot(Player& player) const override;
-    void ShowContentTo(Player& plr) override;
-    void Release(Player& player) override;
-};
 
 //////////////////////////////////////////////////////////////////////////
 // Old class should be removed
@@ -503,43 +159,6 @@ class Loot
         TimePoint        m_createTime;                    // create time (used to refill loot if need)
 };
 
-extern LootStore LootTemplates_Creature;
-extern LootStore LootTemplates_Fishing;
-extern LootStore LootTemplates_Gameobject;
-extern LootStore LootTemplates_Item;
-extern LootStore LootTemplates_Mail;
-extern LootStore LootTemplates_Pickpocketing;
-extern LootStore LootTemplates_Skinning;
-extern LootStore LootTemplates_Disenchant;
-extern LootStore LootTemplates_Prospecting;
-
-void LoadLootTemplates_Creature();
-void LoadLootTemplates_Fishing();
-void LoadLootTemplates_Gameobject();
-void LoadLootTemplates_Item();
-void LoadLootTemplates_Mail();
-void LoadLootTemplates_Pickpocketing();
-void LoadLootTemplates_Skinning();
-void LoadLootTemplates_Disenchant();
-void LoadLootTemplates_Prospecting();
-
-void LoadLootTemplates_Reference();
-
-inline void LoadLootTables()
-{
-    LoadLootTemplates_Creature();
-    LoadLootTemplates_Fishing();
-    LoadLootTemplates_Gameobject();
-    LoadLootTemplates_Item();
-    LoadLootTemplates_Mail();
-    LoadLootTemplates_Pickpocketing();
-    LoadLootTemplates_Skinning();
-    LoadLootTemplates_Disenchant();
-    LoadLootTemplates_Prospecting();
-
-    LoadLootTemplates_Reference();
-}
-
 class LootMgr
 {
     public:
@@ -549,6 +168,9 @@ class LootMgr
         void CheckDropStats(ChatHandler& chat, uint32 amountOfCheck, uint32 lootId, std::string lootStore) const;
 
         LootBaseUPtr GenerateLoot(Player* player, Creature* lootTarget, LootType type);
+        LootBaseUPtr GenerateLoot(Player* player, GameObject* lootTarget, LootType type);
+        LootBaseUPtr GenerateLoot(Player* player, Corpse* lootTarget);
+        LootBaseUPtr GenerateLoot(Player* player, Item* lootTarget, LootType type);
 };
 
 #define sLootMgr MaNGOS::Singleton<LootMgr>::Instance()

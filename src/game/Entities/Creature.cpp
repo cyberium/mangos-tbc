@@ -32,6 +32,7 @@
 #include "Server/Opcodes.h"
 #include "Log.h"
 #include "Loot/LootMgr.h"
+#include "Loot/Loot.h"
 #include "Maps/MapManager.h"
 #include "AI/BaseAI/CreatureAI.h"
 #include "AI/CreatureAISelector.h"
@@ -251,8 +252,6 @@ void Creature::RemoveCorpse(bool inPlace)
     SetDeathState(DEAD);
     UpdateObjectVisibility();
 
-    delete m_loot;
-    m_loot = nullptr;
     m_lootStatus = CREATURE_LOOT_STATUS_NONE;
     m_loot2.reset(nullptr);
     uint32 respawnDelay = 0;
@@ -640,8 +639,6 @@ void Creature::Update(const uint32 diff)
                 DEBUG_FILTER_LOG(LOG_FILTER_AI_AND_MOVEGENSS, "Respawning...");
                 m_respawnTime = 0;
                 SetCanAggro(false);
-                delete m_loot;
-                m_loot = nullptr;
                 m_loot2.reset(nullptr);
 
                 // Clear possible auras having IsDeathPersistent() attribute
@@ -681,8 +678,8 @@ void Creature::Update(const uint32 diff)
         {
             Unit::Update(diff);
 
-            if (m_loot)
-                m_loot->Update();
+            if (m_loot2)
+                m_loot2->Update(diff);
 
             if (!m_isDeadByDefault)
                 if (IsCorpseExpired())
@@ -1044,8 +1041,6 @@ bool Creature::CanTrainAndResetTalentsOf(Player* pPlayer) const
 void Creature::PrepareBodyLootState()
 {
     // loot may already exist (pickpocket case)
-    delete m_loot;
-    m_loot = nullptr;
     m_loot2.reset(nullptr);
 
     if (IsNoLoot())
@@ -1056,8 +1051,6 @@ void Creature::PrepareBodyLootState()
 
         if (killer)
         {
-            m_loot = new Loot(killer, this, LOOT_CORPSE);
-
             // create corpse loot
             m_loot2 = sLootMgr.GenerateLoot(killer, this, LOOT_CORPSE);
         }

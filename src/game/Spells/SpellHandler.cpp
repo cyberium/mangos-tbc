@@ -29,6 +29,7 @@
 #include "Entities/Totem.h"
 #include "Spells/SpellAuras.h"
 #include "Loot/LootMgr.h"
+#include "Loot/Loot.h"
 
 void WorldSession::HandleUseItemOpcode(WorldPacket& recvPacket)
 {
@@ -256,11 +257,11 @@ void WorldSession::HandleOpenItemOpcode(WorldPacket& recvPacket)
     }
     else
     {
-        Loot*& loot = pItem->m_loot;
+        auto& loot = pItem->m_loot2;
         if (!loot)
-            loot = new Loot(pUser, pItem, LOOT_PICKPOCKETING);
+            loot = sLootMgr.GenerateLoot(pUser, pItem, LOOT_PICKPOCKETING);
 
-        loot->ShowContentTo(pUser);
+        loot->ShowContentTo(*pUser);
     }
 }
 

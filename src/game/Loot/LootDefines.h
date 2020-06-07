@@ -24,6 +24,48 @@
 #define MAX_NR_LOOT_ITEMS 16
 // note: the client cannot show more than 16 items total
 
+// For Loot system
+enum CreatureLootStatus
+{
+    CREATURE_LOOT_STATUS_NONE           = 0,
+    CREATURE_LOOT_STATUS_PICKPOCKETED   = 1,
+    CREATURE_LOOT_STATUS_LOOTED         = 2,
+    CREATURE_LOOT_STATUS_SKIN_AVAILABLE = 3,
+    CREATURE_LOOT_STATUS_SKINNED        = 4
+};
+
+enum LootMethod
+{
+    FREE_FOR_ALL                        = 0,
+    ROUND_ROBIN                         = 1,
+    MASTER_LOOT                         = 2,
+    GROUP_LOOT                          = 3,
+    NEED_BEFORE_GREED                   = 4,
+
+    NOT_GROUP_TYPE_LOOT                 = 5                                 // internal use only
+};
+
+// internal loot type
+enum LootType
+{
+    LOOT_NONE                           = 0,
+    LOOT_CORPSE                         = 1,
+    LOOT_PICKPOCKETING                  = 2,
+    LOOT_FISHING                        = 3,
+    LOOT_DISENCHANTING                  = 4,
+    LOOT_ITEM                           = 5,
+    LOOT_SKINNING                       = 6,
+    LOOT_PROSPECTING                    = 7,
+    LOOT_MILLING                        = 8,
+    LOOT_FISHINGHOLE                    = 20,
+    LOOT_FISHING_FAIL                   = 21,
+    LOOT_INSIGNIA                       = 22,
+    LOOT_MAIL                           = 23,
+    LOOT_SPELL                          = 24,
+
+    LOOT_DEBUG                          = 100
+};
+
 enum LootSlotType
 {
     LOOT_SLOT_NORMAL                    = 0,                // can be looted
@@ -97,7 +139,6 @@ enum LootError
     LOOT_ERROR_ALREADY_PICKPOCKETED     = 15,               // Your target has already had its pockets picked
     LOOT_ERROR_NOT_WHILE_SHAPESHIFTED   = 16                // You can't do that while shapeshifted.
 };
-
 
 class Loot;
 class LootBase;

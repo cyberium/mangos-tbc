@@ -26,6 +26,7 @@
 #include "Loot/LootMgr.h"
 #include "Entities/Object.h"
 #include "Groups/Group.h"
+#include "Loot.h"
 
 void WorldSession::HandleAutostoreLootItemOpcode(WorldPacket& recv_data)
 {
@@ -112,11 +113,11 @@ void WorldSession::HandleLootReleaseOpcode(WorldPacket& recv_data)
     ObjectGuid lguid;
     recv_data >> lguid;
 
-    if (Loot* loot = sLootMgr.GetLoot(_player, lguid))
-        loot->Release(_player);
+    /*if (Loot* loot = sLootMgr.GetLoot(_player, lguid))
+        loot->Release(_player);*/
 
-    if(LootBase* loot = sLootMgr.FindLoot(_player, lguid))
-        loot->Release(*_player);
+    if (LootBase* loot = sLootMgr.FindLoot(_player, lguid))
+        loot->Release(*_player, true);
 }
 
 void WorldSession::HandleLootMasterGiveOpcode(WorldPacket& recv_data)

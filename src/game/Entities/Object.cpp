@@ -41,6 +41,7 @@
 #include "Chat/Chat.h"
 #include "Loot/LootMgr.h"
 #include "Spells/SpellMgr.h"
+#include "Loot/Loot.h"
 
 Object::Object(): m_updateFlag(0), m_itsNewObject(false)
 {
@@ -52,7 +53,6 @@ Object::Object(): m_updateFlag(0), m_itsNewObject(false)
 
     m_inWorld           = false;
     m_objectUpdated     = false;
-    m_loot              = nullptr;
 }
 
 Object::~Object()
@@ -71,8 +71,6 @@ Object::~Object()
     }
 
     delete[] m_uint32Values;
-
-    delete m_loot;
 }
 
 void Object::_InitValues()
