@@ -47,7 +47,6 @@ void WorldSession::HandleAutostoreLootItemOpcode(WorldPacket& recv_data)
     if (!loot->CanLootSlot(_player->GetObjectGuid(), itemSlot))
     {
         sLog.outDebug("HandleAutostoreLootItemOpcode> %s have no right to loot itemSlot(%u)", _player->GetGuidStr().c_str(), itemSlot);
-        loot->SendReleaseFor(*_player);
         return;
     }
 

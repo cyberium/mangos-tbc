@@ -66,7 +66,7 @@ class Loot
 {
     public:
         friend struct LootItem;
-        friend class GroupLootRoll;
+        friend class OldGroupLootRoll2;
         friend class LootMgr;
 
         Loot(Player* player, Creature* creature, LootType type);
@@ -98,7 +98,7 @@ class Loot
         uint32 GetGoldAmount() const { return m_gold; }
         LootType GetLootType() const { return m_lootType; }
         LootItem* GetLootItemInSlot(uint32 itemSlot);
-        GroupLootRoll* GetRollForSlot(uint32 itemSlot);
+        OldGroupLootRoll2* GetRollForSlot(uint32 itemSlot);
         InventoryResult SendItem(Player* target, uint32 itemSlot);
         InventoryResult SendItem(Player* target, LootItem* lootItem);
         WorldObject const* GetLootTarget() const { return m_lootTarget; }
@@ -153,7 +153,6 @@ class Loot
         bool             m_isChest;                       // chest type object have special loot right
         bool             m_isChanged;                     // true if at least one item is looted
         bool             m_isFakeLoot;                    // nothing to loot but will sparkle for empty windows
-        GroupLootRollMap m_roll;                          // used if an item is under rolling
         GuidSet          m_playersLooting;                // player who opened loot windows
         GuidSet          m_playersOpened;                 // players that have released the corpse
         TimePoint        m_createTime;                    // create time (used to refill loot if need)

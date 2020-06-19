@@ -157,6 +157,9 @@ void WaypointMovementGenerator<Creature>::Reset(Creature& creature)
 
 void WaypointMovementGenerator<Creature>::OnArrived(Creature& creature)
 {
+    if (creature.HaveDebugFlag(CMDEBUGFLAG_WP_PATH))
+        sLog.outString("Arrived");
+
     // already arrived?
     if (m_lastReachedWaypoint == i_currentNode)
         return;
@@ -386,6 +389,9 @@ static const uint32 PreSendTime     = 1500;
 // build and send path to next node
 void WaypointMovementGenerator<Creature>::SendNextWayPointPath(Creature& creature)
 {
+    if (creature.HaveDebugFlag(CMDEBUGFLAG_WP_PATH))
+        sLog.outString("Sending next wp");
+
     // make sure to reset spline index as its new path
     m_nodeIndexes.clear();
 

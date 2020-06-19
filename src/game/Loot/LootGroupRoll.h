@@ -20,11 +20,16 @@
 #define CMANGOS_LOOT_GROUP_ROLL_H
 
 #include "Common.h"
+#include "Timer.h"
 #include "LootDefines.h"
 #include "Entities/ObjectGuid.h"
 
+#include <memory>
+
 class Player;
+class LootBase;
 struct LootItem;
+typedef std::shared_ptr<LootItem> LootItemSPtr;
 
 struct PlayerRollVote
 {
@@ -38,13 +43,13 @@ class GroupLootRoll
 public:
     typedef std::unordered_map<ObjectGuid, PlayerRollVote> RollVoteMap;
 
-    GroupLootRoll() : m_rollVoteMap(ROLL_VOTE_MASK_ALL), m_isStarted(false), m_lootItem(nullptr), m_loot(nullptr), m_itemSlot(0), m_voteMask(), m_endTime(0)
+    GroupLootRoll() : m_rollVoteMap(ROLL_VOTE_MASK_ALL), m_isStarted(false), m_lootItem(nullptr), m_loot(nullptr), m_voteMask()
     {}
     ~GroupLootRoll();
 
-    bool TryToStart(Loot& loot, uint32 itemSlot);
+    bool TryToStart(LootBase& loot, LootItemSPtr& lootItem);
     bool PlayerVote(Player* player, RollVote vote);
-    bool UpdateRoll();
+    bool UpdateRoll(uint32 diff);
 
 private:
     void SendStartRoll();
@@ -55,11 +60,11 @@ private:
     bool AllPlayerVoted(RollVoteMap::const_iterator& winnerItr);
     RollVoteMap           m_rollVoteMap;
     bool                  m_isStarted;
-    LootItem*             m_lootItem;
-    Loot*                 m_loot;
-    uint32                m_itemSlot;
+    LootItemSPtr          m_lootItem;
+    LootBase*             m_loot;
     RollVoteMask          m_voteMask;
-    time_t                m_endTime;
+    ShortTimeTracker      m_rollTimer;
 };
 typedef std::unordered_map<uint32, GroupLootRoll> GroupLootRollMap;
+
 #endif

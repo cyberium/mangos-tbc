@@ -42,7 +42,7 @@ class Item;
 class LootBase
 {
     friend struct LootItem;
-    friend class GroupLootRoll;
+    friend class OldGroupLootRoll;
     friend class LootMgr;
 
 public:
@@ -54,6 +54,7 @@ public:
     void BuildLootPacket(LootItemRightVec const& lootRights, ByteBuffer& buffer) const;
     virtual void Release(Player& player, bool fromHandler = false) = 0;
     void SetGoldAmount(uint32 amount) { m_lootRule->SetGoldAmount(amount); }
+    void ShowContentTo(Player& plr);
 
     // used in item.cpp to explicitly load a saved item and should be defined in LootTypeItem
     virtual void AddSavedItem(uint32 itemid, uint32 count, uint32 randomSuffix, int32 randomPropertyId) {};
@@ -62,15 +63,13 @@ public:
     // Send methods
     bool AutoStore(Player& player, bool broadcast = false, uint32 bag = NULL_BAG, uint32 slot = NULL_SLOT);
     void SendGold(Player& player);
-    void SendReleaseFor(ObjectGuid const& guid);
-    void SendReleaseFor(Player& plr);
-    void SendReleaseForAll();
     InventoryResult SendItem(Player& target, uint32 itemSlot);
+    InventoryResult SendItem(Player& target, LootItemSPtr lootItem);
     Object* GetLootTarget() const { return m_lootTarget; }
-    virtual void ShowContentTo(Player& plr) = 0;
+    void ReleaseAll();
 
     // Getters
-    virtual bool HaveLoot(Player const& player) const { return m_lootRule->CanLoot(player); }
+    virtual bool HaveLoot(Player const& player) const { return m_lootRule->HaveItemFor(player); }
     bool CanLootSlot(ObjectGuid const& guid, uint32 itemSlot) const { return m_lootRule->CanLootSlot(guid, itemSlot); }
     bool IsItemAlreadyIn(uint32 itemId) const { return m_lootRule->IsItemAlreadyIn(itemId); };
     LootType GetLootType() const { return m_lootType; }
@@ -79,6 +78,8 @@ public:
     Player* GetOwner() const { return m_owner; }
     virtual uint32 GetGoldAmount() const { return m_lootRule->GetGoldAmount(); }
     bool GetLootFor(Player const& player, LootItemRightVec* lootItems) { return m_lootRule->HaveItemFor(player, lootItems); };
+    LootMethod GetLootMethod() const { return m_lootRule->GetLootMethod(); }
+    GroupLootRoll* GetRollForSlot(uint32 itemSlot) { return m_lootRule->GetRollForSlot(itemSlot); }
 
     virtual void Update(uint32 diff) {}
 
@@ -89,15 +90,17 @@ public:
 
 protected:
     void SetPlayerLootingPose(Player& player, bool looting = true);
-    InventoryResult SendItem(Player& target, LootItemSPtr lootItem);
 
     void NotifyMoneyRemoved();
     void NotifyItemRemoved(uint32 lootIndex);
     void NotifyItemRemoved(Player& player, LootItem& lootItem) const;
+    void SendReleaseFor(ObjectGuid const& guid);
+    void SendReleaseFor(Player& plr);
+    void SendReleaseForAll();
 
     void ForceLootAnimationClientUpdate() const;
 
-    Object*          m_lootTarget;
+    Object* m_lootTarget;
     ClientLootType   m_clientLootType;
     LootType         m_lootType;
     LootRuleUPtr     m_lootRule;
@@ -112,15 +115,21 @@ class LootTypeSkinning : public LootBase
 {
 public:
     LootTypeSkinning(Player& player, Creature& lootTarget);
-    void ShowContentTo(Player& plr) override;
     void Release(Player& player, bool fromHandler /*= false*/) override;
 };
 
-class LootTypeCorpseSingle : public LootBase
+class LootTypeCreatureSingle : public LootBase
 {
 public:
-    LootTypeCorpseSingle(Player& player, Creature& lootTarget);
-    void ShowContentTo(Player& plr) override;
+    LootTypeCreatureSingle(Player& player, Creature& lootTarget);
+    void Release(Player& player, bool fromHandler = false) override;
+    virtual void Update(uint32 diff) override { m_lootRule->Update(diff); };
+};
+
+class LootTypeCreatureGroup : public LootBase
+{
+public:
+    LootTypeCreatureGroup(Player& player, Creature& lootTarget);
     void Release(Player& player, bool fromHandler = false) override;
 };
 
@@ -128,7 +137,6 @@ class LootTypeFishing : public LootBase
 {
 public:
     LootTypeFishing(Player& player, GameObject& lootTarget, LootType type);
-    void ShowContentTo(Player& plr) override;
     void Release(Player& player, bool fromHandler = false) override;
 };
 
@@ -136,7 +144,6 @@ class LootTypeItem : public LootBase
 {
 public:
     LootTypeItem(Player& player, Item& lootTarget, LootType type);
-    void ShowContentTo(Player& plr) override;
     void Release(Player& player, bool fromHandler = false) override;
 
 
@@ -147,7 +154,13 @@ class LootTypePlayerCorpse : public LootBase
 {
 public:
     LootTypePlayerCorpse(Player& player, Corpse& lootTarget);
-    void ShowContentTo(Player& plr) override;
+    void Release(Player& player, bool fromHandler /*= false*/) override;
+};
+
+class LootTypeChest : public LootBase
+{
+public:
+    LootTypeChest(Player& player, GameObject& lootTarget);
     void Release(Player& player, bool fromHandler /*= false*/) override;
 };
 

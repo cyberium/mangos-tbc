@@ -666,11 +666,11 @@ void Loot::GroupCheck()
 
             uint32 itemSlot = lootItem->lootSlot;
 
-            if (m_roll.find(itemSlot) == m_roll.end() && lootItem->IsAllowed(player, this))
+            /*if (m_roll.find(itemSlot) == m_roll.end() && lootItem->IsAllowed(player, this))
             {
                 if (!m_roll[itemSlot].TryToStart(*this, itemSlot))      // Create and try to start a roll
                     m_roll.erase(m_roll.find(itemSlot));                // Cannot start roll so we have to delete it (find will not fail as the item was just created)
-            }
+            }*/
         }
     }
 
@@ -1277,14 +1277,7 @@ bool Loot::AutoStore(Player* player, bool broadcast /*= false*/, uint32 bag /*= 
 void Loot::Update()
 {
     m_isChanged = false;
-    GroupLootRollMap::iterator itr = m_roll.begin();
-    while (itr != m_roll.end())
-    {
-        if (itr->second.UpdateRoll())
-            m_roll.erase(itr++);
-        else
-            ++itr;
-    }
+
 }
 
 // this will force server to update all client that is showing this object
@@ -1351,7 +1344,7 @@ void Loot::Clear()
     m_ownerSet.clear();
     m_masterOwnerGuid.Clear();
     m_currentLooterGuid.Clear();
-    m_roll.clear();
+    //m_roll.clear();
     m_maxEnchantSkill = 0;
     m_haveItemOverThreshold = false;
     m_isChecked = false;
@@ -1508,7 +1501,7 @@ ByteBuffer& operator<<(ByteBuffer& b, LootItem const& li)
 // Vote for an ongoing roll
 void LootMgr::PlayerVote(Player* player, ObjectGuid const& lootTargetGuid, uint32 itemSlot, RollVote vote)
 {
-    Loot* loot = GetLoot(player, lootTargetGuid);
+    LootBase* loot = FindLoot(player, lootTargetGuid);
 
     if (!loot)
     {
@@ -1679,7 +1672,7 @@ LootBaseUPtr LootMgr::GenerateLoot(Player* player, Creature* lootTarget, LootTyp
     switch (type)
     {
         case LOOT_CORPSE:
-            return std::move(LootBaseUPtr(new LootTypeCorpseSingle(*player, *lootTarget)));
+            return std::move(LootBaseUPtr(new LootTypeCreatureSingle(*player, *lootTarget)));
             break;
 
         case LOOT_PICKPOCKETING:
@@ -1707,6 +1700,9 @@ LootBaseUPtr LootMgr::GenerateLoot(Player* player, GameObject* lootTarget, LootT
         case LOOT_FISHINGHOLE:
             return std::move(LootBaseUPtr(new LootTypeFishing(*player, *lootTarget, type)));
             break;
+
+        case  LOOT_CHEST:
+            return std::move(LootBaseUPtr(new LootTypeChest(*player, *lootTarget)));
 
         default:
             break;

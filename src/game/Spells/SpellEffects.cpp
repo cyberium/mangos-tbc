@@ -4522,7 +4522,7 @@ void Spell::EffectOpenLock(SpellEffectIndex eff_idx)
     }
     else
     {
-        SendLoot(gameObjTarget->GetObjectGuid(), LOOT_SKINNING, LockType(m_spellInfo->EffectMiscValue[eff_idx]));
+        SendLoot(gameObjTarget->GetObjectGuid(), LOOT_CHEST, LockType(m_spellInfo->EffectMiscValue[eff_idx]));
         m_spellLog.AddLog(uint32(SPELL_EFFECT_OPEN_LOCK), gameObjTarget->GetPackGUID());
     }
 }

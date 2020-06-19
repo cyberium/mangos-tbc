@@ -234,7 +234,7 @@ InventoryResult LootBase::SendItem(Player& target, LootItemSPtr lootItem)
     {
         if (m_lootRule->IsLootedForAll())
         {
-            SendReleaseForAll();
+            ReleaseAll();
             /*if (m_isChest)
             {
                 GameObject* go = (GameObject*)m_lootTarget;
@@ -250,10 +250,32 @@ InventoryResult LootBase::SendItem(Player& target, LootItemSPtr lootItem)
             }*/
         }
         else if (!m_lootRule->HaveItemFor(target))
-            SendReleaseFor(target);
+            Release(target);
         ForceLootAnimationClientUpdate();
     }
     return msg;
+}
+
+void LootBase::ShowContentTo(Player& plr)
+{
+    m_lootRule->OnPlayerLooting(plr);
+    SetPlayerLootingPose(plr);
+
+    LootItemRightVec lootRights;
+    m_lootRule->HaveItemFor(plr, &lootRights);
+
+    WorldPacket data(SMSG_LOOT_RESPONSE);
+    data << m_lootTarget->GetObjectGuid();
+    data << uint8(m_clientLootType);
+
+    BuildLootPacket(lootRights, data);                      // fill the data with items contained in the loot (may be empty)
+    if (m_lootTarget && (m_lootTarget->IsUnit() || m_lootTarget->IsGameObject()))
+    {
+        // Add a bit of time to let player pickup item if despawn timer is near
+        static_cast<WorldObject*>(m_lootTarget)->InspectingLoot();
+    }
+
+    plr.SendDirectMessage(data);
 }
 
 void LootBase::NotifyMoneyRemoved()
@@ -316,6 +338,19 @@ void LootBase::ForceLootAnimationClientUpdate() const
     }
 }
 
+void LootBase::ReleaseAll()
+{
+    // important create a new container with guids here as Release will modify original container
+    GuidSet playerLooting(m_lootRule->GetLootingGuids());
+
+    for (auto guid : playerLooting)
+    {
+        Player* plr = ObjectAccessor::FindPlayer(guid);
+        if (plr)
+            Release(*plr);
+    };
+}
+
 //////////////////////////////////////////////////////////////////////////
 // Skinning loot : using skinning rule.
 // It doesn't matter if grouped or not.
@@ -338,27 +373,6 @@ LootTypeSkinning::LootTypeSkinning(Player& player, Creature& lootTarget) : LootB
     // fill loot with dropped items
     CreatureInfo const* creatureInfo = lootTarget.GetCreatureInfo();
     m_lootRule->FillLoot(creatureInfo->SkinningLootId, LootTemplates_Skinning);
-}
-
-void LootTypeSkinning::ShowContentTo(Player& plr)
-{
-    LootItemRightVec lootRights;
-    m_lootRule->HaveItemFor(plr, &lootRights);
-    WorldPacket data(SMSG_LOOT_RESPONSE);
-    data << m_lootTarget->GetObjectGuid();
-    data << uint8(m_clientLootType);
-
-    SetPlayerLootingPose(plr);
-    m_lootRule->OnPlayerLooting(plr);
-    BuildLootPacket(lootRights, data);
-
-    if (m_lootTarget && (m_lootTarget->IsUnit() || m_lootTarget->IsGameObject()))
-    {
-        // Add a bit of time to let player pickup item if despawn timer is near
-        static_cast<WorldObject*>(m_lootTarget)->InspectingLoot();
-    }
-
-    plr.SendDirectMessage(data);
 }
 
 void LootTypeSkinning::Release(Player& player, bool fromHandler /*= false*/)
@@ -395,10 +409,59 @@ void LootTypeSkinning::Release(Player& player, bool fromHandler /*= false*/)
 // Items are only available for the player who was tapped
 //////////////////////////////////////////////////////////////////////////
 
-LootTypeCorpseSingle::LootTypeCorpseSingle(Player& player, Creature& lootTarget) : LootBase(LOOT_CORPSE, &lootTarget)
+LootTypeCreatureSingle::LootTypeCreatureSingle(Player& player, Creature& lootTarget) : LootBase(LOOT_CORPSE, &lootTarget)
 {
-    // initialize loot rules using single player rule
-    m_lootRule = LootRuleUPtr(new SinglePlayerRule(*this));
+    // initialize loot rules
+    LootMethod lootMethod = NOT_GROUP_TYPE_LOOT;
+    Group* grp = player.GetGroup();
+    if (grp)
+    {
+        lootMethod = grp->GetLootMethod();
+    }
+
+    switch (lootMethod)
+    {
+        case FREE_FOR_ALL:
+            m_lootRule = LootRuleUPtr(new FreeForAllRule(*this));
+            break;
+
+        case ROUND_ROBIN:
+            m_lootRule = LootRuleUPtr(new RoundRobinRule(*this));
+            break;
+
+        case MASTER_LOOT:
+        {
+            auto masterOwnerGuid = grp->GetMasterLooterGuid();
+            Player* master = ObjectAccessor::FindPlayer(masterOwnerGuid);
+            if (!master || !LootRule::IsEligibleForLoot(*master, *this))
+            {
+                // set group loot rule for this case
+                m_lootRule = LootRuleUPtr(new GroupLootRule(*this));
+            }
+            else
+            {
+                m_lootRule = LootRuleUPtr(new MasterLootRule(*this));
+            }
+            break;
+        }
+
+        case GROUP_LOOT:
+            m_lootRule = LootRuleUPtr(new GroupLootRule(*this));
+            break;
+
+        case NEED_BEFORE_GREED:
+            m_lootRule = LootRuleUPtr(new NeedBeforeGreedRule(*this));
+            break;
+
+        case NOT_GROUP_TYPE_LOOT:
+            m_lootRule = LootRuleUPtr(new SinglePlayerRule(*this));
+            break;
+
+        default:
+            MANGOS_ASSERT(false);
+            break;
+    }
+    MANGOS_ASSERT(m_lootRule);
     m_lootRule->Initialize(player);
 
     // client need this type to display properly the loot window
@@ -407,30 +470,10 @@ LootTypeCorpseSingle::LootTypeCorpseSingle(Player& player, Creature& lootTarget)
     // fill loot with dropped items
     CreatureInfo const* creatureInfo = lootTarget.GetCreatureInfo();
     m_lootRule->FillLoot(creatureInfo->LootId, LootTemplates_Creature);
+    m_lootRule->GenerateMoneyLoot(creatureInfo->MinLootGold, creatureInfo->MaxLootGold);
 }
 
-void LootTypeCorpseSingle::ShowContentTo(Player& plr)
-{
-    LootItemRightVec lootRights;
-    m_lootRule->HaveItemFor(plr, &lootRights);
-    WorldPacket data(SMSG_LOOT_RESPONSE);
-    data << m_lootTarget->GetObjectGuid();
-    data << uint8(m_clientLootType);
-
-    BuildLootPacket(lootRights, data);                           // fill the data with items contained in the loot (may be empty)
-    SetPlayerLootingPose(plr, true);
-    m_lootRule->OnPlayerLooting(plr);
-
-    if (m_lootTarget && (m_lootTarget->IsUnit() || m_lootTarget->IsGameObject()))
-    {
-        // Add a bit of time to let player pickup item if despawn timer is near
-        static_cast<WorldObject*>(m_lootTarget)->InspectingLoot();
-    }
-
-    plr.SendDirectMessage(data);
-}
-
-void LootTypeCorpseSingle::Release(Player& player, bool fromHandler /*= false*/)
+void LootTypeCreatureSingle::Release(Player& player, bool fromHandler /*= false*/)
 {
     if (!m_lootRule->IsLooting(player.GetObjectGuid()))
         return;
@@ -441,12 +484,12 @@ void LootTypeCorpseSingle::Release(Player& player, bool fromHandler /*= false*/)
     m_lootRule->OnRelease(player);
     SetPlayerLootingPose(player, false);
 
-    if (!m_lootRule->HaveItemFor(player))
+    if (m_lootRule->IsLootedForAll())
     {
         Creature* creature = (Creature*)m_lootTarget;
         creature->SetLootStatus(CREATURE_LOOT_STATUS_LOOTED);
-        ForceLootAnimationClientUpdate();
     }
+    ForceLootAnimationClientUpdate();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -455,7 +498,7 @@ void LootTypeCorpseSingle::Release(Player& player, bool fromHandler /*= false*/)
 //
 // Only player who did fishing spell will get the loot windows.
 //
-// If player release (close the loot windows),
+// If player release with loot in it (close the loot windows),
 // the loot will be lost.
 //////////////////////////////////////////////////////////////////////////
 
@@ -513,29 +556,9 @@ LootTypeFishing::LootTypeFishing(Player& player, GameObject& lootTarget, LootTyp
             }
         }
 
-        // important change gameobect state to activated (will wait loot release to be deleted)
+        // important change gameobject state to activated (will wait loot release to be deleted)
         lootTarget.SetLootState(GO_ACTIVATED);
     }
-}
-
-void LootTypeFishing::ShowContentTo(Player& plr)
-{
-    LootItemRightVec lootRights;
-    m_lootRule->HaveItemFor(plr, &lootRights);
-    WorldPacket data(SMSG_LOOT_RESPONSE);
-    data << m_lootTarget->GetObjectGuid();
-    data << uint8(m_clientLootType);
-
-    BuildLootPacket(lootRights, data);                           // fill the data with items contained in the loot (may be empty)
-    m_lootRule->OnPlayerLooting(plr);
-    SetPlayerLootingPose(plr);
-    if (m_lootTarget && (m_lootTarget->IsUnit() || m_lootTarget->IsGameObject()))
-    {
-        // Add a bit of time to let player pickup item if despawn timer is near
-        static_cast<WorldObject*>(m_lootTarget)->InspectingLoot();
-    }
-
-    plr.SendDirectMessage(data);
 }
 
 void LootTypeFishing::Release(Player& player, bool fromHandler /*= false*/)
@@ -614,26 +637,6 @@ LootTypeItem::LootTypeItem(Player& player, Item& lootTarget, LootType type) : Lo
             lootTarget.SetLootState(ITEM_LOOT_CHANGED);
             break;
     }
-}
-
-void LootTypeItem::ShowContentTo(Player& plr)
-{
-    LootItemRightVec lootRights;
-    m_lootRule->HaveItemFor(plr, &lootRights);
-    WorldPacket data(SMSG_LOOT_RESPONSE);
-    data << m_lootTarget->GetObjectGuid();
-    data << uint8(m_clientLootType);
-
-    BuildLootPacket(lootRights, data);                           // fill the data with items contained in the loot (may be empty)
-    m_lootRule->OnPlayerLooting(plr);
-    SetPlayerLootingPose(plr);
-    if (m_lootTarget && (m_lootTarget->IsUnit() || m_lootTarget->IsGameObject()))
-    {
-        // Add a bit of time to let player pickup item if despawn timer is near
-        static_cast<WorldObject*>(m_lootTarget)->InspectingLoot();
-    }
-
-    plr.SendDirectMessage(data);
 }
 
 void LootTypeItem::Release(Player& player, bool fromHandler /*= false*/)
@@ -730,26 +733,6 @@ LootTypePlayerCorpse::LootTypePlayerCorpse(Player& player, Corpse& lootTarget) :
     }
 }
 
-void LootTypePlayerCorpse::ShowContentTo(Player& plr)
-{
-    LootItemRightVec lootRights;
-    m_lootRule->HaveItemFor(plr, &lootRights);
-    WorldPacket data(SMSG_LOOT_RESPONSE);
-    data << m_lootTarget->GetObjectGuid();
-    data << uint8(m_clientLootType);
-
-    BuildLootPacket(lootRights, data);                           // fill the data with items contained in the loot (may be empty)
-    m_lootRule->OnPlayerLooting(plr);
-    SetPlayerLootingPose(plr);
-    if (m_lootTarget && (m_lootTarget->IsUnit() || m_lootTarget->IsGameObject()))
-    {
-        // Add a bit of time to let player pickup item if despawn timer is near
-        static_cast<WorldObject*>(m_lootTarget)->InspectingLoot();
-    }
-
-    plr.SendDirectMessage(data);
-}
-
 void LootTypePlayerCorpse::Release(Player& player, bool fromHandler /*= false*/)
 {
     if (!m_lootRule->IsLooting(player.GetObjectGuid()))
@@ -761,4 +744,90 @@ void LootTypePlayerCorpse::Release(Player& player, bool fromHandler /*= false*/)
     m_lootRule->OnRelease(player);
     SetPlayerLootingPose(player, false);
     auto corpse = static_cast<Corpse*>(m_lootTarget);
+
+    corpse->RemoveFlag(CORPSE_FIELD_DYNAMIC_FLAGS, CORPSE_DYNFLAG_LOOTABLE);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Chest loot : use ChestSinglePlayerRule and ChestGroupRule
+// If player is grouped and this chest should use group loot it will use
+// group loot it will useChest GroupRule
+//
+// Can be looted by one player at a time
+// Chest have no owners
+//////////////////////////////////////////////////////////////////////////
+
+LootTypeChest::LootTypeChest(Player& player, GameObject& lootTarget) : LootBase(LOOT_CHEST, &lootTarget)
+{
+    // initialize loot rules using single player rule
+    m_lootRule = LootRuleUPtr(new ChestSinglePlayerRule(*this));
+    m_lootRule->Initialize(player);
+
+    // client need this type to display properly the loot window
+    m_clientLootType = CLIENT_LOOT_PICKPOCKETING;
+
+    // fill loot with dropped items
+    auto goInfo = lootTarget.GetGOInfo();
+    m_lootRule->FillLoot(goInfo->GetLootId(), LootTemplates_Gameobject);
+    m_lootRule->GenerateMoneyLoot(goInfo->MinMoneyLoot, goInfo->MaxMoneyLoot);
+}
+
+void LootTypeChest::Release(Player& player, bool fromHandler /*= false*/)
+{
+    if (!m_lootRule->IsLooting(player.GetObjectGuid()))
+        return;
+
+    if (!fromHandler)
+        SendReleaseFor(player);
+
+    m_lootRule->OnRelease(player);
+    SetPlayerLootingPose(player, false);
+    auto gob = static_cast<GameObject*>(m_lootTarget);
+    auto goInfo = gob->GetGOInfo();
+
+    if (!m_lootRule->IsEmpty())
+        return;
+
+    uint32 go_min = goInfo->chest.minSuccessOpens;
+    uint32 go_max = goInfo->chest.maxSuccessOpens;
+    bool refill = false;
+
+    // only vein pass this check
+    if (go_min != 0 && go_max > go_min)
+    {
+        float amount_rate = sWorld.getConfig(CONFIG_FLOAT_RATE_MINING_AMOUNT);
+        float min_amount = go_min * amount_rate;
+        float max_amount = go_max * amount_rate;
+
+        gob->AddUse();
+        float uses = float(gob->GetUseCount());
+        if (uses < max_amount)
+        {
+            if (uses >= min_amount)
+            {
+                float chance_rate = sWorld.getConfig(CONFIG_FLOAT_RATE_MINING_NEXT);
+
+                int32 ReqValue = 175;
+                LockEntry const* lockInfo = sLockStore.LookupEntry(goInfo->chest.lockId);
+                if (lockInfo)
+                    ReqValue = lockInfo->Skill[0];
+                float skill = float(player.GetSkillValue(SKILL_MINING)) / (ReqValue + 25);
+                double chance = pow(0.8 * chance_rate, 4 * (1 / double(max_amount)) * double(uses));
+                if (roll_chance_f(float(100.0f * chance + skill)))
+                    refill = true;
+            }
+            else
+                refill = true;  // 100% chance until min uses
+        }
+    }
+
+    if (refill)
+    {
+        // this vein have can be now refilled, as this is a vein no other player are looting it so no need to send them release
+        m_lootRule->Reset();                                // clear the content and reset some values
+        m_lootRule->FillLoot(goInfo->GetLootId(), LootTemplates_Gameobject); // refill the loot with new items
+        gob->SetLootState(GO_READY);
+    }
+    else
+        gob->SetLootState(GO_JUST_DEACTIVATED);
 }

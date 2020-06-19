@@ -57,6 +57,7 @@ enum LootType
     LOOT_SKINNING                       = 6,
     LOOT_PROSPECTING                    = 7,
     LOOT_MILLING                        = 8,
+    LOOT_CHEST                          = 9,
     LOOT_FISHINGHOLE                    = 20,
     LOOT_FISHING_FAIL                   = 21,
     LOOT_INSIGNIA                       = 22,

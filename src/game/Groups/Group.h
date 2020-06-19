@@ -184,6 +184,7 @@ class Group
         bool SameSubGroup(Player const* member1, Player const* member2) const;
 
         MemberSlotList const& GetMemberSlots() const { return m_memberSlots; }
+        member_citerator GetMemberSlot(ObjectGuid guid) const { return _getMemberCSlot(guid); }
         GroupReference* GetFirstMember() { return m_memberMgr.getFirst(); }
         GroupReference const* GetFirstMember() const { return m_memberMgr.getFirst(); }
         uint32 GetMembersCount() const { return m_memberSlots.size(); }

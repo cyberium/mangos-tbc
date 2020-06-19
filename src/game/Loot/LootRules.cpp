@@ -58,6 +58,11 @@ bool LootRule::IsLootedForAll() const
     return true;
 }
 
+void LootRule::Reset()
+{
+    m_lootItems->clear();
+}
+
 bool LootRule::FillLoot(uint32 lootId, LootStore const& store, bool noEmptyError /*= false*/)
 {
     LootTemplate const* tab = store.GetLootFor(lootId);
@@ -157,6 +162,29 @@ void LootRule::GenerateMoneyLoot(uint32 minAmount, uint32 maxAmount)
     }
 }
 
+bool LootRule::IsEligibleForLoot(Player const& looter, LootBase const& loot)
+{
+    MANGOS_ASSERT(loot.GetLootTarget()->isType(TYPEMASK_WORLDOBJECT));
+
+    auto lootTarget = static_cast<WorldObject*>(loot.GetLootTarget());
+
+    // check distance
+    if (!looter.IsAtGroupRewardDistance(lootTarget))
+        return false;
+
+    /*if (lootTarget->IsUnit())
+    {
+        Unit* creature = static_cast<Unit*>(lootTarget);
+
+        //TODO::HasThreat should use const pointer to remove following hack
+        Player* player = const_cast<Player*>(&looter);      //hack
+
+        return creature->getThreatManager().HasThreat(player);
+    }*/
+
+    return true;
+}
+
 //////////////////////////////////////////////////////////////////////////
 // Skinning rule
 //////////////////////////////////////////////////////////////////////////
@@ -173,7 +201,7 @@ bool SkinningRule::IsLootedForAll() const
 
 void SkinningRule::OnRelease(Player& plr)
 {
-    if (CanLoot(plr))
+    if (HaveItemFor(plr))
     {
         m_isReleased = true;
     }
@@ -197,8 +225,9 @@ bool SkinningRule::HaveItemFor(Player const& player, LootItemRightVec* lootItems
         if (lootItem->pickedUpGuid.find(pGuid) != lootItem->pickedUpGuid.end())
             continue;
 
-        // is this player allowed to loot this item?
-        if (!lootItem->IsAllowed(pGuid))
+        // permission is computed at loot time as this can happen for
+        // any player not only player in the group
+        if (!lootItem->AllowedForPlayer(&player, m_loot.GetLootTarget()))
             continue;
 
         // if no container provided we can return true here
@@ -254,12 +283,71 @@ bool SinglePlayerRule::HaveItemFor(Player const& player, LootItemRightVec* lootI
 
 void ChestSinglePlayerRule::Initialize(Player& player)
 {
+    MANGOS_ASSERT(m_loot.GetLootTarget()->IsGameObject());
 
+    auto gob = static_cast<GameObject*>(m_loot.GetLootTarget());
+    auto goInfo = gob->GetGOInfo();
+
+    MANGOS_ASSERT(goInfo->type == GAMEOBJECT_TYPE_CHEST);
+}
+
+bool ChestSinglePlayerRule::IsEmpty() const
+{
+    if (LootRule::IsEmpty())
+        return true;
+
+    for (auto lootItem : *m_lootItems)
+    {
+        /*if (lootItem->freeForAll)
+            return false;*/
+
+        if (lootItem->pickedUpGuid.empty())
+            return false;
+    }
+
+    return true;
+}
+
+bool ChestSinglePlayerRule::HaveItemFor(Player const& player, LootItemRightVec* lootItems /*= nullptr*/) const
+{
+    ObjectGuid pGuid = player.GetObjectGuid();
+    if (m_playersLooting.empty())
+        return false;
+
+    if (lootItems)
+    {
+        lootItems->clear();
+        lootItems->reserve(m_lootItems->size());
+    }
+
+    for (auto& lootItem : *m_lootItems)
+    {
+        // item already picked by this player?
+        if (lootItem->pickedUpGuid.find(pGuid) != lootItem->pickedUpGuid.end())
+            continue;
+
+        // only quest items can be looted more than one time
+        if (!lootItem->freeForAll && !lootItem->pickedUpGuid.empty())
+            continue;
+
+        // permission is computed at loot time as this can happen for
+        // any player not only player in the group
+        if (!lootItem->AllowedForPlayer(&player, m_loot.GetLootTarget()))
+            continue;
+
+        // if no container provided we can return true here
+        if (!lootItems)
+            return true;
+
+        lootItems->emplace_back(lootItem, LOOT_SLOT_OWNER);
+    }
+
+    return lootItems ? !lootItems->empty() : false;
 }
 
 void ChestSinglePlayerRule::OnRelease(Player& plr)
 {
-
+    LootRule::OnRelease(plr);
 }
 
 
@@ -267,49 +355,18 @@ void ChestSinglePlayerRule::OnRelease(Player& plr)
 // Chest rule
 //////////////////////////////////////////////////////////////////////////
 
-/*
-bool ChestRule::CanLoot(Player const& player) const
+void FreeForAllRule::Initialize(Player& player)
 {
-
-}
-
-LootItemRightVecUPtr ChestRule::GetLootItem(Player const& player)
-{
-
-}
-
-bool ChestRule::IsLootedFor(ObjectGuid const& targetGuid) const
-{
-
-}
-
-void ChestRule::Initialize(Player& player)
-{
-    // generate loot only if ready for open and spawned in world
-    if (m_lootItems->empty())
-        return;
-
-    m_ownerSet.clear();
     Group* grp = player.GetGroup();
-
-    auto gob = static_cast<GameObject const*>(m_loot.GetLootTarget());
-
-    if (grp && gob->GetGOInfo()->chest.groupLootRules)
+    if (grp)
     {
-        auto lootMethod = grp->GetLootMethod();
-        auto threshold = grp->GetLootThreshold();
-        uint32 maxEnchantSkill = 0;
         // we need to fill m_ownerSet with player who have access to the loot
         Group::MemberSlotList const& memberList = grp->GetMemberSlots();
         ObjectGuid currentLooterGuid = grp->GetCurrentLooterGuid();
-        GuidList ownerList;                 // used to keep order of the player (important to get correctly next looter)
+        GuidVector ownerList;                               // used to keep order of the player (important to get correctly next looter)
 
+        auto currentLooterItr = grp->GetMemberSlot(currentLooterGuid);
         // current looter must be in the group
-        Group::MemberSlotList::const_iterator currentLooterItr;
-        for (currentLooterItr = memberList.begin(); currentLooterItr != memberList.end(); ++currentLooterItr)
-            if (currentLooterItr->guid == currentLooterGuid)
-                break;
-
         // if not then assign first player in group
         if (currentLooterItr == memberList.end())
         {
@@ -319,80 +376,136 @@ void ChestRule::Initialize(Player& player)
         }
 
         // now that we get a valid current looter iterator we can start to check the loot owner
-        Group::MemberSlotList::const_iterator itr = currentLooterItr;
+        auto itr = currentLooterItr;
         do
         {
-            ++itr;                              // we start by next current looter position in list that way we have directly next looter in result ownerSet (if any exist)
+            ++itr;                                          // we start by next current looter position in list that way we have directly next looter in result ownerSet (if any exist)
             if (itr == memberList.end())
-                itr = memberList.begin();       // reached the end of the list is possible so simply restart from the first element in it
+                itr = memberList.begin();                   // reached the end of the list is possible so simply restart from the first element in it
 
             Player* looter = ObjectAccessor::FindPlayer(itr->guid);
 
             if (!looter)
                 continue;
 
-            if (looter->IsAtGroupRewardDistance(m_loot.GetLootTarget()))
+            if (IsEligibleForLoot(*looter, m_loot))
             {
-                m_ownerSet.insert(itr->guid);   // save this guid to main owner set
-                ownerList.push_back(itr->guid); // save this guid to local ordered GuidList (we need to keep it ordered only here)
+                m_ownerSet.insert(itr->guid);               // save this guid to main owner set
+                ownerList.push_back(itr->guid);             // save this guid to local ordered GuidList (we need to keep it ordered only here)
+            }
 
-                // get enchant skill of authorized looter
-                uint32 enchantSkill = looter->GetSkillValue(SKILL_ENCHANTING);
-                if (maxEnchantSkill < enchantSkill)
-                    maxEnchantSkill = enchantSkill;
+        } while (itr != currentLooterItr);
+    }
+}
+
+bool FreeForAllRule::HaveItemFor(Player const& player, LootItemRightVec* lootItems /*= nullptr*/) const
+{
+    ObjectGuid pGuid = player.GetObjectGuid();
+    if (m_ownerSet.find(pGuid) == m_ownerSet.end())
+        return false;
+
+    if (lootItems)
+    {
+        lootItems->clear();
+        lootItems->reserve(m_lootItems->size());
+    }
+
+    for (auto& lootItem : *m_lootItems)
+    {
+        // item already picked by this player?
+        if (lootItem->pickedUpGuid.find(pGuid) != lootItem->pickedUpGuid.end())
+            continue;
+
+        // is this player allowed to loot this item?
+        if (!lootItem->IsAllowed(pGuid))
+            continue;
+
+        // some quest loot can be available for all group members
+        if (!lootItem->freeForAll && !lootItem->pickedUpGuid.empty())
+            continue;
+
+        // if no container provided we can return true here
+        if (!lootItems)
+            return true;
+
+        lootItems->emplace_back(lootItem, LOOT_SLOT_NORMAL);
+    }
+
+    return lootItems ? !lootItems->empty() : false;
+}
+
+void GroupLootRule::Initialize(Player& player)
+{
+    Group* grp = player.GetGroup();
+    if (grp)
+    {
+        m_threshold = grp->GetLootThreshold();
+
+        // we need to fill m_ownerSet with player who have access to the loot
+        Group::MemberSlotList const& memberList = grp->GetMemberSlots();
+        ObjectGuid currentLooterGuid = grp->GetCurrentLooterGuid();
+        GuidVector ownerList;                               // used to keep order of the player (important to get correctly next looter)
+
+        auto currentLooterItr = grp->GetMemberSlot(currentLooterGuid);
+        // current looter must be in the group
+        // if not then assign first player in group
+        if (currentLooterItr == memberList.end())
+        {
+            currentLooterItr = memberList.begin();
+            currentLooterGuid = currentLooterItr->guid;
+            grp->SetNextLooterGuid(currentLooterGuid);
+        }
+
+        // now that we get a valid current looter iterator we can start to check the loot owner
+        auto itr = currentLooterItr;
+        do
+        {
+            ++itr;                                          // we start by next current looter position in list that way we have directly next looter in result ownerSet (if any exist)
+            if (itr == memberList.end())
+                itr = memberList.begin();                   // reached the end of the list is possible so simply restart from the first element in it
+
+            Player* looter = ObjectAccessor::FindPlayer(itr->guid);
+
+            if (!looter)
+                continue;
+
+            if (IsEligibleForLoot(*looter, m_loot))
+            {
+                m_ownerSet.insert(itr->guid);               // save this guid to main owner set
+                ownerList.push_back(itr->guid);             // save this guid to local ordered GuidList (we need to keep it ordered only here)
             }
 
         } while (itr != currentLooterItr);
 
-        if (lootMethod == MASTER_LOOT)
-        {
-            m_masterOwnerGuid = grp->GetMasterLooterGuid();
-            // Set group method to GROUP_LOOT if no master loot found
-            if (m_ownerSet.find(m_masterOwnerGuid) == m_ownerSet.end())
-            {
-                lootMethod = GROUP_LOOT;
-                m_masterOwnerGuid = ObjectGuid();
-            }
-        }
-
         // if more than one player have right to loot than we have to handle group method, round robin, roll, etc..
-        if (m_ownerSet.size() > 1 && lootMethod != FREE_FOR_ALL)
+        if (m_ownerSet.size() > 1)
         {
             // is current looter have right for this loot?
             if (m_ownerSet.find(currentLooterGuid) == m_ownerSet.end())
             {
                 // as owner list is filled from NEXT current looter position we can assign first element in list as looter and next element in list as next looter
-                m_currentLooterGuid = ownerList.front();                        // set first player who have right to loot as current looter
-                grp->SetNextLooterGuid(*(++ownerList.begin()));                 // set second player who have right as next looter
+                m_currentLooterGuid = ownerList.front();        // set first player who have right to loot as current looter
+                grp->SetNextLooterGuid(*(++ownerList.begin())); // set second player who have right as next looter
             }
             else
             {
                 // as owner set is filled from NEXT current looter position we can assign first element in list as next looter
                 m_currentLooterGuid = currentLooterGuid;
-                grp->SetNextLooterGuid(ownerList.front());                      // set first player who have right as next looter
+                grp->SetNextLooterGuid(ownerList.front());      // set first player who have right as next looter
             }
-
-            SendAllowedLooter();
-            m_isChecked = false;
-            return;
         }
-        m_currentLooterGuid = player->GetObjectGuid();
+        else
+            m_currentLooterGuid = player.GetObjectGuid();
+
         SendAllowedLooter();
     }
-
-    m_ownerSet.insert(player->GetObjectGuid());
 }
 
-void ChestRule::OnRelease(Player& plr)
-{
-    throw std::logic_error("The method or operation is not implemented.");
-}
-
-bool ChestRule::AddItem(LootStoreItem const& lootStoreItem)
+bool GroupLootRule::AddItem(LootStoreItem const& lootStoreItem)
 {
     if (m_lootItems->size() < MAX_NR_LOOT_ITEMS)
     {
-        m_lootItems->emplace_back(new LootItem(lootStoreItem, m_lootItems->size()));
+        m_lootItems->emplace_back(new LootItem(lootStoreItem, m_lootItems->size(), uint32(m_threshold)));
 
         for (auto owner : m_ownerSet)
         {
@@ -400,8 +513,388 @@ bool ChestRule::AddItem(LootStoreItem const& lootStoreItem)
             if (plr && m_lootItems->back()->AllowedForPlayer(plr, m_loot.GetLootTarget()))
                 m_lootItems->back()->allowedGuid.emplace(owner);
         }
+
+        // if at least one player have right to loot it
+        if (m_lootItems->back()->allowedGuid.size() > 1)
+        {
+            if (!m_lootItems->back()->isUnderThreshold)
+                m_lootItems->back()->isBlocked = true;
+        }
+
         return true;
     }
 
     return false;
-}*/
+}
+
+bool GroupLootRule::HaveItemFor(Player const& player, LootItemRightVec* lootItems /*= nullptr*/) const
+{
+    ObjectGuid pGuid = player.GetObjectGuid();
+    if (m_ownerSet.find(pGuid) == m_ownerSet.end())
+        return false;
+
+    if (lootItems)
+    {
+        lootItems->clear();
+        lootItems->reserve(m_lootItems->size());
+    }
+
+    for (auto& lootItem : *m_lootItems)
+    {
+        // item already picked by this player?
+        if (lootItem->pickedUpGuid.find(pGuid) != lootItem->pickedUpGuid.end())
+            continue;
+
+        // is this player allowed to loot this item?
+        if (!lootItem->IsAllowed(pGuid))
+            continue;
+
+        // some quest loot can be available for all group members
+        if (!lootItem->freeForAll && !lootItem->pickedUpGuid.empty())
+            continue;
+
+        LootSlotType slotType = LOOT_SLOT_VIEW;
+        if (lootItem->isUnderThreshold)
+        {
+            // if current looter have not right to this item permit to anyone that have right to loot it
+            if (lootItem->allowedGuid.find(m_currentLooterGuid) != lootItem->allowedGuid.end())
+            {
+                if (!m_currentLooterReleased && m_currentLooterGuid != pGuid)
+                    continue;
+            }
+
+            slotType = LOOT_SLOT_NORMAL;
+        }
+        else
+        {
+            if (lootItem->isBlocked)
+            {
+                slotType = LOOT_SLOT_VIEW;
+            }
+            else
+            {
+                slotType = LOOT_SLOT_NORMAL;
+            }
+        }
+
+        // if no container provided we can return true here
+        if (!lootItems)
+            return true;
+
+        lootItems->emplace_back(lootItem, slotType);
+    }
+
+    return lootItems ? !lootItems->empty() : false;
+}
+
+void GroupLootRule::OnRelease(Player& plr)
+{
+    if (plr.GetObjectGuid() == m_currentLooterGuid)
+        m_currentLooterReleased = true;
+    LootRule::OnRelease(plr);
+}
+
+void GroupLootRule::OnPlayerLooting(Player& plr)
+{
+    LootRule::OnPlayerLooting(plr);
+    if (!m_rollChecked)
+    {
+        m_rollChecked = true;
+
+        // check if there is need to launch a roll
+        for (auto lootItem : *m_lootItems)
+        {
+            if (!lootItem->isBlocked)
+                continue;
+
+            uint32 itemSlot = lootItem->lootSlot;
+
+            if (m_rolls.find(itemSlot) == m_rolls.end() && lootItem->IsAllowed(plr.GetObjectGuid()))
+            {
+                if (!m_rolls[itemSlot].TryToStart(m_loot, lootItem))    // Create and try to start a roll
+                    m_rolls.erase(m_rolls.find(itemSlot));              // Cannot start roll so we have to delete it (find will not fail as the item was just created)
+            }
+        }
+    }
+}
+
+GroupLootRoll* GroupLootRule::GetRollForSlot(uint32 itemSlot)
+{
+    GroupLootRollMap::iterator rollItr = m_rolls.find(itemSlot);
+    if (rollItr == m_rolls.end())
+        return nullptr;
+    return &rollItr->second;
+}
+
+void GroupLootRule::Update(uint32 diff)
+{
+    GroupLootRollMap::iterator itr = m_rolls.begin();
+    while (itr != m_rolls.end())
+    {
+        if (itr->second.UpdateRoll(diff))
+            m_rolls.erase(itr++);
+        else
+            ++itr;
+    }
+}
+
+void GroupLootRule::SendAllowedLooter()
+{
+    auto lootTarget = static_cast<WorldObject*>(m_loot.GetLootTarget());
+    if (!lootTarget->IsInWorld())
+        return;
+
+    Map* lootTargetMap = lootTarget->GetMap();
+
+    WorldPacket data(SMSG_LOOT_LIST);
+    data << m_loot.GetLootTarget()->GetObjectGuid();
+    data << uint8(0);
+    data << m_currentLooterGuid.WriteAsPacked();
+
+    for (auto itr : m_ownerSet)
+    {
+        if (Player* plr = ObjectAccessor::FindPlayer(itr))
+        {
+            if (plr->IsInWorld() && plr->GetMap() == lootTargetMap)
+            {
+                if (WorldSession* session = plr->GetSession())
+                    session->SendPacket(data);
+            }
+        }
+    }
+}
+
+bool RoundRobinRule::HaveItemFor(Player const& player, LootItemRightVec* lootItems /*= nullptr*/) const
+{
+    ObjectGuid pGuid = player.GetObjectGuid();
+    if (m_ownerSet.find(pGuid) == m_ownerSet.end())
+        return false;
+
+    if (lootItems)
+    {
+        lootItems->clear();
+        lootItems->reserve(m_lootItems->size());
+    }
+
+    for (auto& lootItem : *m_lootItems)
+    {
+        // item already picked by this player?
+        if (lootItem->pickedUpGuid.find(pGuid) != lootItem->pickedUpGuid.end())
+            continue;
+
+        // is this player allowed to loot this item?
+        if (!lootItem->IsAllowed(pGuid))
+            continue;
+
+        // some quest loot can be available for all group members
+        if (!lootItem->freeForAll && !lootItem->pickedUpGuid.empty())
+            continue;
+
+        // if current looter have not right to this item permit to anyone that have right to loot it
+        if (lootItem->allowedGuid.find(m_currentLooterGuid) != lootItem->allowedGuid.end())
+        {
+            if (!m_currentLooterReleased && m_currentLooterGuid != pGuid)
+                continue;
+        }
+
+        // if no container provided we can return true here
+        if (!lootItems)
+            return true;
+
+        lootItems->emplace_back(lootItem, LOOT_SLOT_NORMAL);
+    }
+
+    return lootItems ? !lootItems->empty() : false;
+}
+
+void RoundRobinRule::OnRelease(Player& plr)
+{
+    if (plr.GetObjectGuid() == m_currentLooterGuid)
+        m_currentLooterReleased = true;
+    LootRule::OnRelease(plr);
+}
+
+void MasterLootRule::Initialize(Player& player)
+{
+    GroupLootRule::Initialize(player);
+
+    if (Group* grp = player.GetGroup())
+        m_masterOwnerGuid = grp->GetMasterLooterGuid();
+}
+
+bool MasterLootRule::AddItem(LootStoreItem const& lootStoreItem)
+{
+    if (m_lootItems->size() < MAX_NR_LOOT_ITEMS)
+    {
+        m_lootItems->emplace_back(new LootItem(lootStoreItem, m_lootItems->size(), uint32(m_threshold)));
+
+        for (auto owner : m_ownerSet)
+        {
+            Player* plr = ObjectAccessor::FindPlayer(owner);
+            if (plr && m_lootItems->back()->AllowedForPlayer(plr, m_loot.GetLootTarget()))
+                m_lootItems->back()->allowedGuid.emplace(owner);
+        }
+
+        // if at least one player have right to loot it
+        if (m_lootItems->back()->allowedGuid.size() > 1)
+        {
+            if (!m_lootItems->back()->isUnderThreshold)
+                m_lootItems->back()->isBlocked = true;
+        }
+
+        return true;
+    }
+
+    return false;
+}
+
+bool MasterLootRule::HaveItemFor(Player const& player, LootItemRightVec* lootItems /*= nullptr*/) const
+{
+    ObjectGuid pGuid = player.GetObjectGuid();
+    if (m_ownerSet.find(pGuid) == m_ownerSet.end())
+        return false;
+
+    if (lootItems)
+    {
+        lootItems->clear();
+        lootItems->reserve(m_lootItems->size());
+    }
+
+    for (auto& lootItem : *m_lootItems)
+    {
+        // item already picked by this player?
+        if (lootItem->pickedUpGuid.find(pGuid) != lootItem->pickedUpGuid.end())
+            continue;
+
+        // some quest loot can be available for all group members
+        if (!lootItem->freeForAll && !lootItem->pickedUpGuid.empty())
+            continue;
+
+        LootSlotType slotType = LOOT_SLOT_VIEW;
+
+        if (lootItem->freeForAll)
+        {
+            // is this player allowed to loot this item?
+            if (!lootItem->IsAllowed(pGuid))
+                continue;
+
+            slotType = LOOT_SLOT_OWNER;
+        }
+        else if (lootItem->isUnderThreshold)
+        {
+            // is this player allowed to loot this item?
+            if (!lootItem->IsAllowed(pGuid))
+                continue;
+
+            // if current looter have not right to this item permit to anyone that have right to loot it
+            if (lootItem->allowedGuid.find(m_currentLooterGuid) != lootItem->allowedGuid.end())
+            {
+                if (!m_currentLooterReleased && m_currentLooterGuid != pGuid)
+                    continue;
+            }
+
+            slotType = LOOT_SLOT_NORMAL;
+        }
+        else
+        {
+            if (pGuid == m_masterOwnerGuid && !lootItem->allowedGuid.empty())
+            {
+                slotType = LOOT_SLOT_MASTER;
+            }
+            else
+            {
+                // is this player allowed to loot this item?
+                if (!lootItem->IsAllowed(pGuid))
+                    continue;
+
+                slotType = LOOT_SLOT_VIEW;
+            }
+        }
+
+        // if no container provided we can return true here
+        if (!lootItems)
+            return true;
+
+        lootItems->emplace_back(lootItem, slotType);
+    }
+
+    return lootItems ? !lootItems->empty() : false;
+}
+
+void MasterLootRule::OnPlayerLooting(Player& plr)
+{
+    if (!m_rollChecked)
+    {
+        m_rollChecked = true;
+
+        auto lootTarget = static_cast<WorldObject*>(m_loot.GetLootTarget());
+        if (!lootTarget->IsInWorld())
+            return;
+
+        Map* lootTargetMap = lootTarget->GetMap();
+
+        PlayerList playerList;
+        Player* masterLooter = nullptr;
+        for (auto playerGuid : m_ownerSet)
+        {
+            Player* player = sObjectAccessor.FindPlayer(playerGuid);
+            if (!player || !player->IsInWorld() || player->GetMap() != lootTargetMap)
+                continue;
+
+            if (!player->GetSession())
+                continue;
+
+            if (!masterLooter && playerGuid == m_masterOwnerGuid)
+                masterLooter = player;
+
+            LootItemRightVec lootItemRight;
+            if (HaveItemFor(*player, &lootItemRight))
+            {
+                for (auto lRight : lootItemRight)
+                {
+                    if (lRight.lootItem->isUnderThreshold)
+                        continue;
+
+                    playerList.emplace_back(player);
+                    break;
+                }
+            }
+        }
+
+        // in master loot case we have to send looter list to client
+        if (masterLooter)
+        {
+            WorldPacket data(SMSG_LOOT_MASTER_LIST);
+            data << uint8(playerList.size());
+            for (auto itr : playerList)
+                data << itr->GetObjectGuid();
+            masterLooter->GetSession()->SendPacket(data);
+        }
+    }
+}
+
+void MasterLootRule::SendAllowedLooter()
+{
+    auto lootTarget = static_cast<WorldObject*>(m_loot.GetLootTarget());
+    if (!lootTarget->IsInWorld())
+        return;
+
+    Map* lootTargetMap = lootTarget->GetMap();
+
+    WorldPacket data(SMSG_LOOT_LIST);
+    data << m_loot.GetLootTarget()->GetObjectGuid();
+    data << m_masterOwnerGuid.WriteAsPacked();
+    data << m_currentLooterGuid.WriteAsPacked();
+
+    for (auto itr : m_ownerSet)
+    {
+        if (Player* plr = ObjectAccessor::FindPlayer(itr))
+        {
+            if (plr->IsInWorld() && plr->GetMap() == lootTargetMap)
+            {
+                if (WorldSession* session = plr->GetSession())
+                    session->SendPacket(data);
+            }
+        }
+    }
+}
