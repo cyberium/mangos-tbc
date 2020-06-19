@@ -416,19 +416,28 @@ bool FreeForAllRule::HaveItemFor(Player const& player, LootItemRightVec* lootIte
         if (lootItem->pickedUpGuid.find(pGuid) != lootItem->pickedUpGuid.end())
             continue;
 
-        // is this player allowed to loot this item?
-        if (!lootItem->IsAllowed(pGuid))
-            continue;
-
         // some quest loot can be available for all group members
         if (!lootItem->freeForAll && !lootItem->pickedUpGuid.empty())
             continue;
+
+        LootSlotType slotType = LOOT_SLOT_NORMAL;
+        // is this player allowed to loot this item?
+        if (!lootItem->IsAllowed(pGuid))
+        {
+            if (lootItem->lootItemType != LOOTITEM_TYPE_CONDITIONNAL)
+                continue;
+
+            if (!lootItem->pickedUpGuid.empty())
+                continue;
+
+            slotType = LOOT_SLOT_VIEW;
+        }
 
         // if no container provided we can return true here
         if (!lootItems)
             return true;
 
-        lootItems->emplace_back(lootItem, LOOT_SLOT_NORMAL);
+        lootItems->emplace_back(lootItem, slotType);
     }
 
     return lootItems ? !lootItems->empty() : false;
@@ -545,15 +554,23 @@ bool GroupLootRule::HaveItemFor(Player const& player, LootItemRightVec* lootItem
         if (lootItem->pickedUpGuid.find(pGuid) != lootItem->pickedUpGuid.end())
             continue;
 
-        // is this player allowed to loot this item?
-        if (!lootItem->IsAllowed(pGuid))
-            continue;
-
         // some quest loot can be available for all group members
         if (!lootItem->freeForAll && !lootItem->pickedUpGuid.empty())
             continue;
 
-        LootSlotType slotType = LOOT_SLOT_VIEW;
+        LootSlotType slotType = LOOT_SLOT_NORMAL;
+        // is this player allowed to loot this item?
+        if (!lootItem->IsAllowed(pGuid))
+        {
+            if (lootItem->lootItemType != LOOTITEM_TYPE_CONDITIONNAL)
+                continue;
+
+            if (!lootItem->pickedUpGuid.empty())
+                continue;
+
+            slotType = LOOT_SLOT_REQS;
+        }
+
         if (lootItem->isUnderThreshold)
         {
             // if current looter have not right to this item permit to anyone that have right to loot it
@@ -562,18 +579,12 @@ bool GroupLootRule::HaveItemFor(Player const& player, LootItemRightVec* lootItem
                 if (!m_currentLooterReleased && m_currentLooterGuid != pGuid)
                     continue;
             }
-
-            slotType = LOOT_SLOT_NORMAL;
         }
         else
         {
-            if (lootItem->isBlocked)
+            if (lootItem->isBlocked && slotType != LOOT_SLOT_REQS)
             {
                 slotType = LOOT_SLOT_VIEW;
-            }
-            else
-            {
-                slotType = LOOT_SLOT_NORMAL;
             }
         }
 
@@ -682,13 +693,22 @@ bool RoundRobinRule::HaveItemFor(Player const& player, LootItemRightVec* lootIte
         if (lootItem->pickedUpGuid.find(pGuid) != lootItem->pickedUpGuid.end())
             continue;
 
-        // is this player allowed to loot this item?
-        if (!lootItem->IsAllowed(pGuid))
-            continue;
-
         // some quest loot can be available for all group members
         if (!lootItem->freeForAll && !lootItem->pickedUpGuid.empty())
             continue;
+
+        LootSlotType slotType = LOOT_SLOT_NORMAL;
+        // is this player allowed to loot this item?
+        if (!lootItem->IsAllowed(pGuid))
+        {
+            if (lootItem->lootItemType != LOOTITEM_TYPE_CONDITIONNAL)
+                continue;
+
+            if (!lootItem->pickedUpGuid.empty())
+                continue;
+
+            slotType = LOOT_SLOT_REQS;
+        }
 
         // if current looter have not right to this item permit to anyone that have right to loot it
         if (lootItem->allowedGuid.find(m_currentLooterGuid) != lootItem->allowedGuid.end())
@@ -701,7 +721,7 @@ bool RoundRobinRule::HaveItemFor(Player const& player, LootItemRightVec* lootIte
         if (!lootItems)
             return true;
 
-        lootItems->emplace_back(lootItem, LOOT_SLOT_NORMAL);
+        lootItems->emplace_back(lootItem, slotType);
     }
 
     return lootItems ? !lootItems->empty() : false;
@@ -770,45 +790,49 @@ bool MasterLootRule::HaveItemFor(Player const& player, LootItemRightVec* lootIte
         if (!lootItem->freeForAll && !lootItem->pickedUpGuid.empty())
             continue;
 
-        LootSlotType slotType = LOOT_SLOT_VIEW;
+        LootSlotType slotType = LOOT_SLOT_NORMAL;
 
-        if (lootItem->freeForAll)
+        // is this player allowed to loot this item?
+        if (!lootItem->IsAllowed(pGuid))
         {
-            // is this player allowed to loot this item?
-            if (!lootItem->IsAllowed(pGuid))
+            if (lootItem->lootItemType != LOOTITEM_TYPE_CONDITIONNAL)
                 continue;
 
-            slotType = LOOT_SLOT_OWNER;
-        }
-        else if (lootItem->isUnderThreshold)
-        {
-            // is this player allowed to loot this item?
-            if (!lootItem->IsAllowed(pGuid))
+            if (!lootItem->pickedUpGuid.empty())
                 continue;
 
-            // if current looter have not right to this item permit to anyone that have right to loot it
-            if (lootItem->allowedGuid.find(m_currentLooterGuid) != lootItem->allowedGuid.end())
-            {
-                if (!m_currentLooterReleased && m_currentLooterGuid != pGuid)
-                    continue;
-            }
-
-            slotType = LOOT_SLOT_NORMAL;
+            slotType = LOOT_SLOT_REQS;
         }
-        else
+
+        if (!lootItem->freeForAll)
         {
-            if (pGuid == m_masterOwnerGuid && !lootItem->allowedGuid.empty())
+            if (lootItem->isUnderThreshold)
             {
-                slotType = LOOT_SLOT_MASTER;
+                // if current looter have not right to this item permit to anyone that have right to loot it
+                if (lootItem->allowedGuid.find(m_currentLooterGuid) != lootItem->allowedGuid.end())
+                {
+                    if (!m_currentLooterReleased && m_currentLooterGuid != pGuid)
+                        continue;
+                }
             }
             else
             {
-                // is this player allowed to loot this item?
-                if (!lootItem->IsAllowed(pGuid))
-                    continue;
-
-                slotType = LOOT_SLOT_VIEW;
+                if (pGuid == m_masterOwnerGuid && !lootItem->allowedGuid.empty())
+                {
+                    slotType = LOOT_SLOT_MASTER;
+                }
+                else
+                {
+                    if (slotType != LOOT_SLOT_REQS)
+                        slotType = LOOT_SLOT_VIEW;
+                }
             }
+
+        }
+        else
+        {
+            if (slotType != LOOT_SLOT_REQS)
+                slotType = LOOT_SLOT_OWNER;
         }
 
         // if no container provided we can return true here

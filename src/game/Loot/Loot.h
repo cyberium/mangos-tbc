@@ -118,19 +118,20 @@ public:
     void Release(Player& player, bool fromHandler /*= false*/) override;
 };
 
-class LootTypeCreatureSingle : public LootBase
+class LootTypeCreature : public LootBase
 {
 public:
-    LootTypeCreatureSingle(Player& player, Creature& lootTarget);
+    LootTypeCreature(Player& player, Creature& lootTarget);
     void Release(Player& player, bool fromHandler = false) override;
     virtual void Update(uint32 diff) override { m_lootRule->Update(diff); };
 };
 
-class LootTypeCreatureGroup : public LootBase
+class LootTypeGameObject : public LootBase
 {
 public:
-    LootTypeCreatureGroup(Player& player, Creature& lootTarget);
+    LootTypeGameObject(Player& player, GameObject& lootTarget);
     void Release(Player& player, bool fromHandler = false) override;
+    virtual void Update(uint32 diff) override { m_lootRule->Update(diff); };
 };
 
 class LootTypeFishing : public LootBase
@@ -157,11 +158,12 @@ public:
     void Release(Player& player, bool fromHandler /*= false*/) override;
 };
 
-class LootTypeChest : public LootBase
+/*
+class LootTypeOldChest : public LootBase
 {
 public:
-    LootTypeChest(Player& player, GameObject& lootTarget);
-    void Release(Player& player, bool fromHandler /*= false*/) override;
-};
+    LootTypeOldChest(Player& player, GameObject& lootTarget);
+    void Release(Player& player, bool fromHandler / *= false* /) override;
+};*/
 
 #endif

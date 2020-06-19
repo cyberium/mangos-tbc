@@ -1370,7 +1370,7 @@ bool ChatHandler::HandleDebugLootDropStats(char* args)
     {
         sLog.outString("Corpse loot");
         {
-            LootTypeCreatureSingle loot(*GetPlayer(), *target);
+            LootTypeCreature loot(*GetPlayer(), *target);
             loot.PrintLootList();
             loot.ShowContentTo(*GetPlayer());
         }

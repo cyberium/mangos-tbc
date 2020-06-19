@@ -1672,7 +1672,7 @@ LootBaseUPtr LootMgr::GenerateLoot(Player* player, Creature* lootTarget, LootTyp
     switch (type)
     {
         case LOOT_CORPSE:
-            return std::move(LootBaseUPtr(new LootTypeCreatureSingle(*player, *lootTarget)));
+            return std::move(LootBaseUPtr(new LootTypeCreature(*player, *lootTarget)));
             break;
 
         case LOOT_PICKPOCKETING:
@@ -1702,7 +1702,7 @@ LootBaseUPtr LootMgr::GenerateLoot(Player* player, GameObject* lootTarget, LootT
             break;
 
         case  LOOT_CHEST:
-            return std::move(LootBaseUPtr(new LootTypeChest(*player, *lootTarget)));
+            return std::move(LootBaseUPtr(new LootTypeGameObject(*player, *lootTarget)));
 
         default:
             break;

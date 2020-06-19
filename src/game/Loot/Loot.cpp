@@ -401,97 +401,6 @@ void LootTypeSkinning::Release(Player& player, bool fromHandler /*= false*/)
         SendReleaseFor(player);
 }
 
-
-//////////////////////////////////////////////////////////////////////////
-// Corpse single player loot : using single player rule
-//
-// Only when player is not grouped
-// Items are only available for the player who was tapped
-//////////////////////////////////////////////////////////////////////////
-
-LootTypeCreatureSingle::LootTypeCreatureSingle(Player& player, Creature& lootTarget) : LootBase(LOOT_CORPSE, &lootTarget)
-{
-    // initialize loot rules
-    LootMethod lootMethod = NOT_GROUP_TYPE_LOOT;
-    Group* grp = player.GetGroup();
-    if (grp)
-    {
-        lootMethod = grp->GetLootMethod();
-    }
-
-    switch (lootMethod)
-    {
-        case FREE_FOR_ALL:
-            m_lootRule = LootRuleUPtr(new FreeForAllRule(*this));
-            break;
-
-        case ROUND_ROBIN:
-            m_lootRule = LootRuleUPtr(new RoundRobinRule(*this));
-            break;
-
-        case MASTER_LOOT:
-        {
-            auto masterOwnerGuid = grp->GetMasterLooterGuid();
-            Player* master = ObjectAccessor::FindPlayer(masterOwnerGuid);
-            if (!master || !LootRule::IsEligibleForLoot(*master, *this))
-            {
-                // set group loot rule for this case
-                m_lootRule = LootRuleUPtr(new GroupLootRule(*this));
-            }
-            else
-            {
-                m_lootRule = LootRuleUPtr(new MasterLootRule(*this));
-            }
-            break;
-        }
-
-        case GROUP_LOOT:
-            m_lootRule = LootRuleUPtr(new GroupLootRule(*this));
-            break;
-
-        case NEED_BEFORE_GREED:
-            m_lootRule = LootRuleUPtr(new NeedBeforeGreedRule(*this));
-            break;
-
-        case NOT_GROUP_TYPE_LOOT:
-            m_lootRule = LootRuleUPtr(new SinglePlayerRule(*this));
-            break;
-
-        default:
-            MANGOS_ASSERT(false);
-            break;
-    }
-    MANGOS_ASSERT(m_lootRule);
-    m_lootRule->Initialize(player);
-
-    // client need this type to display properly the loot window
-    m_clientLootType = CLIENT_LOOT_CORPSE;
-
-    // fill loot with dropped items
-    CreatureInfo const* creatureInfo = lootTarget.GetCreatureInfo();
-    m_lootRule->FillLoot(creatureInfo->LootId, LootTemplates_Creature);
-    m_lootRule->GenerateMoneyLoot(creatureInfo->MinLootGold, creatureInfo->MaxLootGold);
-}
-
-void LootTypeCreatureSingle::Release(Player& player, bool fromHandler /*= false*/)
-{
-    if (!m_lootRule->IsLooting(player.GetObjectGuid()))
-        return;
-
-    if (!fromHandler)
-        SendReleaseFor(player);
-
-    m_lootRule->OnRelease(player);
-    SetPlayerLootingPose(player, false);
-
-    if (m_lootRule->IsLootedForAll())
-    {
-        Creature* creature = (Creature*)m_lootTarget;
-        creature->SetLootStatus(CREATURE_LOOT_STATUS_LOOTED);
-    }
-    ForceLootAnimationClientUpdate();
-}
-
 //////////////////////////////////////////////////////////////////////////
 // Fishing loot : using single player rule.
 // It doesn't matter if grouped or not.
@@ -757,7 +666,8 @@ void LootTypePlayerCorpse::Release(Player& player, bool fromHandler /*= false*/)
 // Chest have no owners
 //////////////////////////////////////////////////////////////////////////
 
-LootTypeChest::LootTypeChest(Player& player, GameObject& lootTarget) : LootBase(LOOT_CHEST, &lootTarget)
+/*
+LootTypeOldChest::LootTypeOldChest(Player& player, GameObject& lootTarget) : LootBase(LOOT_CHEST, &lootTarget)
 {
     // initialize loot rules using single player rule
     m_lootRule = LootRuleUPtr(new ChestSinglePlayerRule(*this));
@@ -772,7 +682,7 @@ LootTypeChest::LootTypeChest(Player& player, GameObject& lootTarget) : LootBase(
     m_lootRule->GenerateMoneyLoot(goInfo->MinMoneyLoot, goInfo->MaxMoneyLoot);
 }
 
-void LootTypeChest::Release(Player& player, bool fromHandler /*= false*/)
+void LootTypeOldChest::Release(Player& player, bool fromHandler / *= false* /)
 {
     if (!m_lootRule->IsLooting(player.GetObjectGuid()))
         return;
@@ -786,6 +696,246 @@ void LootTypeChest::Release(Player& player, bool fromHandler /*= false*/)
     auto goInfo = gob->GetGOInfo();
 
     if (!m_lootRule->IsEmpty())
+        return;
+
+    uint32 go_min = goInfo->chest.minSuccessOpens;
+    uint32 go_max = goInfo->chest.maxSuccessOpens;
+    bool refill = false;
+
+    // only vein pass this check
+    if (go_min != 0 && go_max > go_min)
+    {
+        float amount_rate = sWorld.getConfig(CONFIG_FLOAT_RATE_MINING_AMOUNT);
+        float min_amount = go_min * amount_rate;
+        float max_amount = go_max * amount_rate;
+
+        gob->AddUse();
+        float uses = float(gob->GetUseCount());
+        if (uses < max_amount)
+        {
+            if (uses >= min_amount)
+            {
+                float chance_rate = sWorld.getConfig(CONFIG_FLOAT_RATE_MINING_NEXT);
+
+                int32 ReqValue = 175;
+                LockEntry const* lockInfo = sLockStore.LookupEntry(goInfo->chest.lockId);
+                if (lockInfo)
+                    ReqValue = lockInfo->Skill[0];
+                float skill = float(player.GetSkillValue(SKILL_MINING)) / (ReqValue + 25);
+                double chance = pow(0.8 * chance_rate, 4 * (1 / double(max_amount)) * double(uses));
+                if (roll_chance_f(float(100.0f * chance + skill)))
+                    refill = true;
+            }
+            else
+                refill = true;  // 100% chance until min uses
+        }
+    }
+
+    if (refill)
+    {
+        // this vein have can be now refilled, as this is a vein no other player are looting it so no need to send them release
+        m_lootRule->Reset();                                // clear the content and reset some values
+        m_lootRule->FillLoot(goInfo->GetLootId(), LootTemplates_Gameobject); // refill the loot with new items
+        gob->SetLootState(GO_READY);
+    }
+    else
+        gob->SetLootState(GO_JUST_DEACTIVATED);
+}*/
+
+//////////////////////////////////////////////////////////////////////////
+// Normal group loot : using different group loot rules depending on
+//                     player selection
+//
+// Only when player is grouped and object is a creature or gameobject
+//////////////////////////////////////////////////////////////////////////
+
+LootTypeCreature::LootTypeCreature(Player& player, Creature& lootTarget) : LootBase(LOOT_CORPSE, &lootTarget)
+{
+    // initialize loot rules
+    LootMethod lootMethod = NOT_GROUP_TYPE_LOOT;
+    Group* grp = player.GetGroup();
+    if (grp)
+    {
+        lootMethod = grp->GetLootMethod();
+    }
+
+    switch (lootMethod)
+    {
+        case FREE_FOR_ALL:
+            m_lootRule = LootRuleUPtr(new FreeForAllRule(*this));
+            break;
+
+        case ROUND_ROBIN:
+            m_lootRule = LootRuleUPtr(new RoundRobinRule(*this));
+            break;
+
+        case MASTER_LOOT:
+        {
+            auto masterOwnerGuid = grp->GetMasterLooterGuid();
+            Player* master = ObjectAccessor::FindPlayer(masterOwnerGuid);
+            if (!master || !LootRule::IsEligibleForLoot(*master, *this))
+            {
+                // set group loot rule for this case
+                m_lootRule = LootRuleUPtr(new GroupLootRule(*this));
+            }
+            else
+            {
+                m_lootRule = LootRuleUPtr(new MasterLootRule(*this));
+            }
+            break;
+        }
+
+        case GROUP_LOOT:
+            m_lootRule = LootRuleUPtr(new GroupLootRule(*this));
+            break;
+
+        case NEED_BEFORE_GREED:
+            m_lootRule = LootRuleUPtr(new NeedBeforeGreedRule(*this));
+            break;
+
+        case NOT_GROUP_TYPE_LOOT:
+            m_lootRule = LootRuleUPtr(new SinglePlayerRule(*this));
+            break;
+
+        default:
+            MANGOS_ASSERT(false);
+            break;
+    }
+    MANGOS_ASSERT(m_lootRule);
+    m_lootRule->Initialize(player);
+
+    // client need this type to display properly the loot window
+    m_clientLootType = CLIENT_LOOT_CORPSE;
+
+    // fill loot with dropped items
+    CreatureInfo const* creatureInfo = lootTarget.GetCreatureInfo();
+
+    bool isLootedForAll = true;
+    if ((creatureInfo->LootId && m_lootRule->FillLoot(creatureInfo->LootId, LootTemplates_Creature)) || creatureInfo->MaxLootGold > 0)
+    {
+        m_lootRule->GenerateMoneyLoot(creatureInfo->MinLootGold, creatureInfo->MaxLootGold);
+        // loot may be anyway empty (loot may be empty or contain items that no one have right to loot)
+        isLootedForAll = m_lootRule->IsLootedForAll();
+        if (isLootedForAll)
+        {
+            // show sometimes an empty window
+            /*if (sWorld.getConfig(CONFIG_BOOL_CORPSE_EMPTY_LOOT_SHOW) && urand(0, 2) == 1)
+            {
+                m_isFakeLoot = true;
+                isLootedForAll = false;
+            }*/
+        }
+    }
+
+    if (!isLootedForAll)
+    {
+        lootTarget.SetFlag(UNIT_DYNAMIC_FLAGS, UNIT_DYNFLAG_LOOTABLE);
+        ForceLootAnimationClientUpdate();
+    }
+    else
+        lootTarget.SetLootStatus(CREATURE_LOOT_STATUS_LOOTED);
+}
+
+void LootTypeCreature::Release(Player& player, bool fromHandler /*= false*/)
+{
+    if (!m_lootRule->IsLooting(player.GetObjectGuid()))
+        return;
+
+    if (!fromHandler)
+        SendReleaseFor(player);
+
+    m_lootRule->OnRelease(player);
+    SetPlayerLootingPose(player, false);
+
+    if (m_lootRule->IsLootedForAll())
+    {
+        Creature* creature = (Creature*)m_lootTarget;
+        creature->SetLootStatus(CREATURE_LOOT_STATUS_LOOTED);
+    }
+    ForceLootAnimationClientUpdate();
+}
+
+LootTypeGameObject::LootTypeGameObject(Player& player, GameObject& lootTarget) : LootBase(LOOT_CHEST, &lootTarget)
+{
+    // initialize loot rules
+    LootMethod lootMethod = NOT_GROUP_TYPE_LOOT;
+    Group* grp = player.GetGroup();
+    if (grp)
+    {
+        auto goInfo = lootTarget.GetGOInfo();
+
+        if (goInfo->chest.groupLootRules)
+            lootMethod = grp->GetLootMethod();
+    }
+
+    switch (lootMethod)
+    {
+        case FREE_FOR_ALL:
+            m_lootRule = LootRuleUPtr(new FreeForAllRule(*this));
+            break;
+
+        case ROUND_ROBIN:
+            m_lootRule = LootRuleUPtr(new RoundRobinRule(*this));
+            break;
+
+        case MASTER_LOOT:
+        {
+            auto masterOwnerGuid = grp->GetMasterLooterGuid();
+            Player* master = ObjectAccessor::FindPlayer(masterOwnerGuid);
+            if (!master || !LootRule::IsEligibleForLoot(*master, *this))
+            {
+                // set group loot rule for this case
+                m_lootRule = LootRuleUPtr(new GroupLootRule(*this));
+            }
+            else
+            {
+                m_lootRule = LootRuleUPtr(new MasterLootRule(*this));
+            }
+            break;
+        }
+
+        case GROUP_LOOT:
+            m_lootRule = LootRuleUPtr(new GroupLootRule(*this));
+            break;
+
+        case NEED_BEFORE_GREED:
+            m_lootRule = LootRuleUPtr(new NeedBeforeGreedRule(*this));
+            break;
+
+        case NOT_GROUP_TYPE_LOOT:
+            m_lootRule = LootRuleUPtr(new SinglePlayerRule(*this));
+            break;
+
+        default:
+            MANGOS_ASSERT(false);
+            break;
+    }
+    MANGOS_ASSERT(m_lootRule);
+    m_lootRule->Initialize(player);
+
+    // client need this type to display properly the loot window
+    m_clientLootType = CLIENT_LOOT_PICKPOCKETING;
+
+    // fill loot with dropped items
+    auto goInfo = lootTarget.GetGOInfo();
+    m_lootRule->FillLoot(goInfo->GetLootId(), LootTemplates_Gameobject);
+    m_lootRule->GenerateMoneyLoot(goInfo->MinMoneyLoot, goInfo->MaxMoneyLoot);
+}
+
+void LootTypeGameObject::Release(Player& player, bool fromHandler /*= false*/)
+{
+    if (!m_lootRule->IsLooting(player.GetObjectGuid()))
+        return;
+
+    if (!fromHandler)
+        SendReleaseFor(player);
+
+    m_lootRule->OnRelease(player);
+    SetPlayerLootingPose(player, false);
+    auto gob = static_cast<GameObject*>(m_lootTarget);
+    auto goInfo = gob->GetGOInfo();
+
+    if (!m_lootRule->IsLootedForAll())
         return;
 
     uint32 go_min = goInfo->chest.minSuccessOpens;
