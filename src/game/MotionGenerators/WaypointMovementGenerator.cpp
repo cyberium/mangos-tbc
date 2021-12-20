@@ -580,5 +580,12 @@ bool WaypointMovementGenerator<Creature>::SetNextWaypoint(uint32 pointId)
     // Set the point
     i_currentNode = pointId;
     m_currentWaypointNode = currPoint;
+
+    // set last reached point accordingly to avoid going back to point 0 if the
+    // movegen is interrupted before reaching next point
+    if (pointId > 0)
+        m_lastReachedWaypoint = pointId - 1;
+    else
+        m_lastReachedWaypoint = i_path->rbegin()->first;
     return true;
 }
