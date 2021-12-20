@@ -1405,6 +1405,13 @@ void Unit::JustKilledCreature(Unit* killer, Creature* victim, Player* responsibl
     if (victim->IsLinkingEventTrigger())
         victim->GetMap()->GetCreatureLinkingHolder()->DoCreatureLinkingEvent(LINKING_EVENT_DIE, victim);
 
+    if (victim->GetCreatureGroup())
+    {
+        auto fData = victim->GetCreatureGroup()->GetFormationData();
+        if (fData)
+            fData->OnDeath(victim);
+    }
+
     // Dungeon specific stuff
     if (victim->GetInstanceId())
     {

@@ -23,6 +23,15 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <memory>
+
+struct FormationEntry;
+class FormationData;
+class FormationSlotData;
+
+typedef std::shared_ptr<FormationSlotData> FormationSlotDataSPtr;
+typedef std::shared_ptr<FormationData> FormationDataSPtr;
+typedef std::shared_ptr<FormationEntry> FormationEntrySPtr;
 
 struct SpawnGroupRandomEntry
 {
@@ -40,6 +49,7 @@ struct SpawnGroupDbGuids
 {
     uint32 Id;
     uint32 DbGuid;
+    int32 SlotId;
 };
 
 enum SpawnGroupType
@@ -78,6 +88,40 @@ struct SpawnGroupEntry
     std::vector<SpawnGroupRandomEntry*> EquallyChanced;
     std::vector<SpawnGroupRandomEntry*> ExplicitlyChanced;
     std::vector<uint32> LinkedGroups;
+
+    // may be nullptr
+    FormationEntrySPtr formationEntry;
+
+    int32 GetFormationSlotId(uint32 dbGuid) const
+    {
+        auto const& itr = std::find_if(DbGuids.begin(), DbGuids.end(), [dbGuid](SpawnGroupDbGuids const& x) { return x.DbGuid == dbGuid; });
+        return itr != DbGuids.end() ? (*itr).SlotId : -1;
+    }
+};
+
+// Formation defines
+enum SpawnGroupFormationType : int32
+{
+    SPAWN_GROUP_FORMATION_TYPE_NONE = -1,
+    SPAWN_GROUP_FORMATION_TYPE_RANDOM = 0,
+    SPAWN_GROUP_FORMATION_TYPE_SINGLE_FILE = 1,
+    SPAWN_GROUP_FORMATION_TYPE_SIDE_BY_SIDE = 2,
+    SPAWN_GROUP_FORMATION_TYPE_LIKE_GEESE = 3,
+    SPAWN_GROUP_FORMATION_TYPE_FANNED_OUT_BEHIND = 4,
+    SPAWN_GROUP_FORMATION_TYPE_FANNED_OUT_IN_FRONT = 5,
+    SPAWN_GROUP_FORMATION_TYPE_CIRCLE_THE_LEADER = 6,
+
+    SPAWN_GROUP_FORMATION_TYPE_COUNT = 7
+};
+
+struct FormationEntry
+{
+    uint32 GroupId;
+    SpawnGroupFormationType Type;
+    uint32 MovementID;
+    float Spread;
+    uint32 Options;
+    std::string Comment;
 };
 
 struct SpawnGroupEntryContainer

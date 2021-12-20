@@ -487,6 +487,32 @@ ChatCommand* ChatHandler::getCommandTable()
         { nullptr,          0,                  false, nullptr,                                        "", nullptr }
     };
 
+    static ChatCommand npcFormationCommandTable[] =
+    {
+        { "info",           SEC_GAMEMASTER,     false, &ChatHandler::HandleNpcFormationInfoCommand,   "", nullptr },
+        { "reset",          SEC_GAMEMASTER,     false, &ChatHandler::HandleNpcFormationResetCommand,   "", nullptr },
+        { "switch",         SEC_GAMEMASTER,     false, &ChatHandler::HandleNpcFormationSwitchCommand,  "", nullptr },
+        { "setmaster",      SEC_GAMEMASTER,     false, &ChatHandler::HandleNpcFormationSetMasterCommand, "", nullptr },
+        { "compact",        SEC_GAMEMASTER,     false, &ChatHandler::HandleNpcFormationCompactCommand, "", nullptr },
+        { "create",         SEC_GAMEMASTER,     false, &ChatHandler::HandleNpcFormationCreateCommand,  "", nullptr },
+        { "add",            SEC_GAMEMASTER,     false, &ChatHandler::HandleNpcFormationAddCommand,     "", nullptr },
+        { nullptr,          0,                  false, nullptr,                                        "", nullptr }
+    };
+
+//     static ChatCommand npcGroupBehaviorCommandTable[] =
+//     {
+//         { "show",           SEC_GAMEMASTER,     false, &ChatHandler::HandleNpcGroupBehaviorShowCommand, "", nullptr },
+//         { "set",            SEC_GAMEMASTER,     false, &ChatHandler::HandleNpcGroupBehaviorSetCommand, "", nullptr },
+//         { nullptr,          0,                  false, nullptr,                                        "", nullptr }
+//     };
+
+    static ChatCommand npcGroupCommandTable[] =
+    {
+        { "info",           SEC_GAMEMASTER,     false, &ChatHandler::HandleNpcGroupInfoCommand,        "", nullptr },
+        //{ "behavior",       SEC_GAMEMASTER,     false, nullptr,                                        "", npcGroupBehaviorCommandTable },
+        { nullptr,          0,                  false, nullptr,                                        "", nullptr }
+    };
+
     static ChatCommand npcCommandTable[] =
     {
         { "add",            SEC_GAMEMASTER,     false, &ChatHandler::HandleNpcAddCommand,              "", nullptr },
@@ -518,6 +544,8 @@ ChatCommand* ChatHandler::getCommandTable()
         { "showloot",       SEC_GAMEMASTER,     false, &ChatHandler::HandleNpcShowLootCommand,         "", nullptr },
         { "tempspawn",      SEC_GAMEMASTER,     false, &ChatHandler::HandleNpcTempSpawn,               "", nullptr },
         { "evade",          SEC_GAMEMASTER,     false, &ChatHandler::HandleNpcEvade,                   "", nullptr },
+        { "formation",      SEC_GAMEMASTER,     false, nullptr,                                        "", npcFormationCommandTable },
+        { "group",          SEC_GAMEMASTER,     false, nullptr,                                        "", npcGroupCommandTable },
 
         //{ TODO: fix or remove this commands
         { "addweapon",      SEC_ADMINISTRATOR,  false, &ChatHandler::HandleNpcAddWeaponCommand,        "", nullptr },

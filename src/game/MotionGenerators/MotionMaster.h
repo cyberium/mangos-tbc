@@ -23,6 +23,7 @@
 #include "Globals/SharedDefines.h"
 #include "MotionGenerators/WaypointManager.h"
 #include "Entities/ObjectGuid.h"
+#include "Maps/SpawnGroupDefines.h"
 
 #include <stack>
 #include <vector>
@@ -74,6 +75,8 @@ enum MovementGeneratorType
     EXTERNAL_WAYPOINT_MOVE          = 17,                   // Only used in UnitAI::MovementInform when a waypoint is reached. The pathId >= 0 is added as additonal value
     EXTERNAL_WAYPOINT_MOVE_START    = 18,                   // Only used in UnitAI::MovementInform when a waypoint is started. The pathId >= 0 is added as additional value
     EXTERNAL_WAYPOINT_FINISHED_LAST = 19,                   // Only used in UnitAI::MovementInform when the waittime of the last wp is finished The pathId >= 0 is added as additional value
+
+    FORMATION_MOTION_TYPE           = 20,                   // TargetedMovementGenerator.h
 };
 
 enum MMCleanFlag
@@ -134,6 +137,7 @@ class MotionMaster : private std::stack<MovementGenerator*>
         void MoveRandomAroundPoint(float x, float y, float z, float radius, float verticalZ = 0.0f, uint32 timer = 0);
         void MoveTargetedHome(bool runHome = true);
         void MoveFollow(Unit* target, float dist, float angle, bool asMain = false, bool alwaysBoost = false);
+        void MoveInFormation(FormationSlotDataSPtr& sData, bool asMain = false);
         void MoveStay(float x, float y, float z, float o = 0, bool asMain = false);
         void MoveChase(Unit* target, float dist = 0.0f, float angle = 0.0f, bool moveFurther = false, bool walk = false, bool combat = true, bool delayed = false);
         void DistanceYourself(float dist);
