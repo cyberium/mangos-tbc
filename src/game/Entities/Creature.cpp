@@ -1551,7 +1551,11 @@ void Creature::SetCreatureGroup(CreatureGroup* group)
 void Creature::ClearCreatureGroup()
 {
     if (m_creatureGroup)
+    {
+        if (m_creatureGroup->GetFormationData())
+            m_creatureGroup->GetFormationData()->Remove(this);
         m_creatureGroup->RemoveObject(this);
+    }
     m_creatureGroup = nullptr;
 }
 

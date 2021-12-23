@@ -32,6 +32,7 @@ class FormationSlotData;
 typedef std::shared_ptr<FormationSlotData> FormationSlotDataSPtr;
 typedef std::shared_ptr<FormationData> FormationDataSPtr;
 typedef std::shared_ptr<FormationEntry> FormationEntrySPtr;
+typedef std::map<uint32, FormationSlotDataSPtr> FormationSlotMap;
 
 struct SpawnGroupRandomEntry
 {
@@ -112,6 +113,13 @@ enum SpawnGroupFormationType : int32
     SPAWN_GROUP_FORMATION_TYPE_CIRCLE_THE_LEADER = 6,
 
     SPAWN_GROUP_FORMATION_TYPE_COUNT = 7
+};
+
+enum SpawnGroupFormationSlotType : uint32
+{
+    SPAWN_GROUP_FORMATION_SLOT_TYPE_STATIC = 0,
+    SPAWN_GROUP_FORMATION_SLOT_TYPE_SCRIPT = 1,
+    SPAWN_GROUP_FORMATION_SLOT_TYPE_PLAYER = 2,
 };
 
 struct FormationEntry

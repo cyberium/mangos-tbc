@@ -339,6 +339,9 @@ FormationData::FormationData(CreatureGroup* gData) :
         if (sData.SlotId == 0)
             m_realMasterDBGuid = sData.DbGuid;
     }
+
+    // provided slot id should be ordered with no gap!
+    m_slotGuid = m_slotsMap.size();
 }
 
 FormationData::~FormationData()
@@ -623,7 +626,7 @@ void FormationData::OnDeath(Creature* creature)
     auto slot = creature->GetFormationSlot();
     if(!slot)
         return;
-    sLog.outString("Deleting creature from formation(%u)", m_groupData->GetGroupEntry().Id);
+    sLog.outString("Deleting %s from formation(%u)", creature->GetGuidStr().c_str(), m_groupData->GetGroupEntry().Id);
 
     bool formationMaster = false;
     if (slot->IsFormationMaster())
@@ -679,13 +682,39 @@ int32 FormationData::GetDefaultSlotId(uint32 dbGuid)
     return -1;
 }
 
-FormationSlotDataSPtr FormationData::GetDefaultSlot(uint32 dbGuid)
+FormationSlotDataSPtr FormationData::GetDefaultSlot(uint32 dbGuid, SpawnGroupFormationSlotType slotType /*= SPAWN_GROUP_FORMATION_SLOT_TYPE_STATIC*/)
 {
-    auto slotId = GetDefaultSlotId(dbGuid);
-    if (slotId < 0)
-        return nullptr;
+    FormationSlotDataSPtr result = nullptr;
+    switch (slotType)
+    {
+        case SPAWN_GROUP_FORMATION_SLOT_TYPE_STATIC:
+        {
+            auto slotId = GetDefaultSlotId(dbGuid);
+            if (slotId < 0)
+                result = nullptr;
+            else
+                result = m_slotsMap[slotId];
+            break;
+        }
+        case SPAWN_GROUP_FORMATION_SLOT_TYPE_SCRIPT:
+        case SPAWN_GROUP_FORMATION_SLOT_TYPE_PLAYER:
+            for (auto slotItr : m_slotsMap)
+            {
+                if (slotItr.second->GetSlotType() != slotType)
+                    continue;
+    
+                if (slotItr.second->GetRealOwnerGuid() == dbGuid)
+                {
+                    result = slotItr.second;
+                    break;
+                }
+            }
+            break;
+        default:
+            break;
+    }
 
-    return m_slotsMap[slotId];
+    return result;
 }
 
 void FormationData::SwitchSlotOwner(FormationSlotDataSPtr slotA, FormationSlotDataSPtr slotB)
@@ -724,7 +753,7 @@ bool FormationData::FreeSlot(FormationSlotDataSPtr slot)
     return true;
 }
 
-bool FormationData::AddInFormationSlot(Unit* newUnit)
+bool FormationData::AddInFormationSlot(Unit* newUnit, SpawnGroupFormationSlotType slotType /*= SPAWN_GROUP_FORMATION_SLOT_TYPE_STATIC*/)
 {
     if (!newUnit || !newUnit->IsAlive())
     {
@@ -735,7 +764,7 @@ bool FormationData::AddInFormationSlot(Unit* newUnit)
     Unit* oldUnit = nullptr;
 
     // TODO:: its normal to not have default slot for dynamically added creature/player to the formation we should add one
-    auto slot = GetDefaultSlot(newUnit->GetDbGuid());
+    auto slot = GetDefaultSlot(newUnit->GetDbGuid(), slotType);
     if (!slot)
     {
         sLog.outError("FormationData::AddInFormationSlot> Unable to find default slot for %s , is it part of the formation? Aborting...", newUnit->GetGuidStr().c_str());
@@ -755,28 +784,28 @@ bool FormationData::AddInFormationSlot(Unit* newUnit)
     return true;
 }
 
-bool FormationData::AddInFormationSlot(Unit* newUnit, FormationSlotDataSPtr newSlot)
-{
-    if (!newUnit || !newUnit->IsAlive())
-    {
-        sLog.outError("FormationData::AddInFormationSlot> Invalid call detected! (unit is nullptr or not alive)");
-        return false;
-    }
-
-    if (!newSlot)
-        return AddInFormationSlot(newUnit);
-
-    if (!FreeSlot(newSlot))
-    {
-        sLog.outError("FormationData::AddInFormationSlot> Unable to free occupied slot by %s for %s", newSlot->GetOwner()->GetGuidStr().c_str(), newUnit->GetGuidStr().c_str());
-        return false;
-    }
-
-    newSlot->SetOwner(newUnit);
-    newUnit->SetFormationSlot(newSlot);
-
-    return true;
-}
+// bool FormationData::AddInFormationSlot(Unit* newUnit, FormationSlotDataSPtr newSlot)
+// {
+//     if (!newUnit || !newUnit->IsAlive())
+//     {
+//         sLog.outError("FormationData::AddInFormationSlot> Invalid call detected! (unit is nullptr or not alive)");
+//         return false;
+//     }
+// 
+//     if (!newSlot)
+//         return AddInFormationSlot(newUnit);
+// 
+//     if (!FreeSlot(newSlot))
+//     {
+//         sLog.outError("FormationData::AddInFormationSlot> Unable to free occupied slot by %s for %s", newSlot->GetOwner()->GetGuidStr().c_str(), newUnit->GetGuidStr().c_str());
+//         return false;
+//     }
+// 
+//     newSlot->SetOwner(newUnit);
+//     newUnit->SetFormationSlot(newSlot);
+// 
+//     return true;
+// }
 
 // replace to either first available slot position or provided one
 void FormationData::Replace(Unit* newUnit, FormationSlotDataSPtr newSlot /*= nullptr*/)
@@ -820,10 +849,179 @@ void FormationData::Compact(bool set /*= true*/)
 
 void FormationData::Add(Creature* creature)
 {
+    if (creature->GetFormationSlot())
+        return;
 
+    if (creature->IsTemporarySummon())
+    {
+        sLog.outError("FormationData::Add> unable to add temporary summon creature %s to formation %u", creature->GetGuidStr().c_str(), m_groupData->GetGroupId());
+        return;
+    }
+
+    if (!creature->IsAlive())
+    {
+        sLog.outError("FormationData::Add> Cannot add dead creature %s to formation %u", creature->GetGuidStr().c_str(), m_groupData->GetGroupId());
+        return;
+    }
+
+    SpawnGroupFormationSlotType slotType = SPAWN_GROUP_FORMATION_SLOT_TYPE_SCRIPT;
+
+    // be sure that no slot already exist before creating a new one
+    auto defaultSlot = GetDefaultSlot(creature->GetDbGuid(), slotType);
+    if (!defaultSlot)
+    {
+        uint32 slotId = m_slotGuid++;
+        auto result = m_slotsMap.emplace(slotId, new FormationSlotData(slotId, creature->GetDbGuid(), m_groupData, slotType));
+        if (!result.second)
+        {
+            sLog.outError("FormationData::Add> Failled to add creature %s to formation %u", creature->GetGuidStr().c_str(), m_groupData->GetGroupId());
+            return;
+        }
+    }
+
+    SetFormationSlot(creature, slotType);
 }
 
-FormationSlotDataSPtr FormationData::SetFormationSlot(Creature* creature)
+void FormationData::Add(Player* player)
+{
+    if (player->GetFormationSlot())
+        return;
+
+    uint32 slotId = m_slotGuid++;
+    if (slotId == 0)
+    {
+        // this should have at least one master
+        sLog.outError("FormationData::Add(Player* player)> Unable to add %s to formation %u as master", player->GetGuidStr().c_str(), m_groupData->GetGroupId());
+        m_slotGuid = 0;
+        return;
+    }
+
+    // be sure that no slot already exist before creating a new one
+    auto defaultSlot = GetDefaultSlot(player->GetDbGuid(), SPAWN_GROUP_FORMATION_SLOT_TYPE_PLAYER);
+    if (!defaultSlot)
+    {
+        auto result = m_slotsMap.emplace(slotId, new FormationSlotData(slotId, player->GetDbGuid(), m_groupData, SPAWN_GROUP_FORMATION_SLOT_TYPE_PLAYER));
+        if (!result.second)
+        {
+            sLog.outError("FormationData::Add(Player* player)> Failled to add %s to formation %u", player->GetGuidStr().c_str(), m_groupData->GetGroupId());
+            return;
+        }
+
+        defaultSlot = result.first->second;
+    }
+    player->SetFormationSlot(defaultSlot);
+    player->GetFormationSlot()->SetOwner(player);
+    FixSlotsPositions();
+    SetFollowersMaster();
+}
+
+void FormationData::Remove(Unit* unit)
+{
+    if (unit->IsPlayer())
+    {
+        Remove(static_cast<Player*>(unit));
+    }
+    else if (unit->IsCreature())
+        Remove(static_cast<Creature*>(unit));
+}
+
+void FormationData::Remove(Creature* creature)
+{
+    auto slot = creature->GetFormationSlot();
+    if (!slot)
+        return;
+
+    // check if slot is still owner one
+    if (slot->GetRealOwnerGuid() != creature->GetDbGuid())
+    {
+        FormationSlotMap::iterator slotItr = m_slotsMap.end();
+        for (FormationSlotMap::iterator itr = m_slotsMap.begin(); itr != m_slotsMap.end(); ++itr)
+        {
+            if (itr->second->GetRealOwnerGuid() == creature->GetDbGuid())
+            {
+                slotItr = itr;
+                break;
+            }
+        }
+
+        if (slotItr == m_slotsMap.end())
+        {
+            // slot can be just freed like the creature was dead
+            OnDeath(creature);
+        }
+        else
+        {
+            SwitchSlotOwner(slot, slotItr->second);
+            slot = slotItr->second;
+        }
+    }
+
+    // free the slot
+    OnDeath(creature);
+
+    creature->GetMotionMaster()->Initialize();
+
+    if (slot->IsRemovable())
+        m_slotsMap.erase(slot->GetSlotId());
+    if (m_keepCompact)
+        FixSlotsPositions();
+}
+
+void FormationData::Remove(Player* player)
+{
+    auto slot = player->GetFormationSlot();
+    if (!slot)
+        return;
+
+    if (slot->GetRealOwnerGuid() != player->GetDbGuid())
+    {
+        FormationSlotMap::iterator slotItr = m_slotsMap.end();
+        for (FormationSlotMap::iterator itr = m_slotsMap.begin(); itr != m_slotsMap.end(); ++itr)
+        {
+            if (!itr->second->GetSlotType() == SPAWN_GROUP_FORMATION_SLOT_TYPE_PLAYER)
+                continue;
+
+            if (itr->second->GetRealOwnerGuid() == player->GetDbGuid())
+            {
+                slotItr = itr;
+                break;
+            }
+        }
+
+        if (slotItr == m_slotsMap.end())
+        {
+            // slot can be just freed
+            slot = nullptr;
+        }
+        else
+        {
+            SwitchSlotOwner(slot, slotItr->second);
+            slot = slotItr->second;
+        }
+    }
+
+    if (!slot)
+    {
+        sLog.outError("FormationData::Remove(Player* player)> Failled to remove player %s from formation %u", player->GetGuidStr().c_str(), m_groupData->GetGroupId());
+        return;
+    }
+
+    if (slot->IsRemovable())
+    {
+        // remove the slot
+        m_slotsMap.erase(slot->GetSlotId());
+    }
+    else
+        slot->SetOwner(nullptr);
+
+    player->SetFormationSlot(nullptr);
+    player->GetMotionMaster()->Initialize();
+
+    if (m_keepCompact)
+        FixSlotsPositions();
+}
+
+FormationSlotDataSPtr FormationData::SetFormationSlot(Creature* creature, SpawnGroupFormationSlotType slotType /*= SPAWN_GROUP_FORMATION_SLOT_TYPE_STATIC*/)
 {
     if (!creature->IsAlive())
         return nullptr;
@@ -843,7 +1041,7 @@ FormationSlotDataSPtr FormationData::SetFormationSlot(Creature* creature)
     }
 
     // add it in the corresponding slot
-    if (!AddInFormationSlot(creature))
+    if (!AddInFormationSlot(creature, slotType))
         return nullptr;
 
 //     uint32 slotId = -1;
@@ -1118,7 +1316,7 @@ void FormationData::FixSlotsPositions()
                 if ((membCount & 1) == 0)
                     slot->SetAngle(M_PI_F + (M_PI_F / 4.0f));
                 else
-                    slot->SetAngle(M_PI_F - (M_PI_F / 3.0f));
+                    slot->SetAngle(M_PI_F - (M_PI_F / 4.0f));
                 slot->SetDistance(defaultDist* (((membCount - 1) / 2) + 1));
                 slot->GetRecomputePosition() = true;
                 ++membCount;

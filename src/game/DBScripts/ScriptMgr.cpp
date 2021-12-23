@@ -33,6 +33,7 @@
 #include "Mails/Mail.h"
 #include "AI/ScriptDevAI/ScriptDevAIMgr.h"
 #include "Maps/InstanceData.h"
+#include "Entities/Object.h"
 
 ScriptMapMapName sQuestEndScripts;
 ScriptMapMapName sQuestStartScripts;
@@ -784,6 +785,48 @@ void ScriptMgr::LoadScripts(ScriptMapMapName& scripts, const char* tablename)
                 break;
             case SCRIPT_COMMAND_ZONE_PULSE:                 // 50
                 break;
+
+            case SCRIPT_COMMAND_FORMATION:                  // 60
+            {
+                switch (tmp.formationData.command)
+                {
+                    case 3: // Add buddy to formation
+                    {
+                        if (!tmp.buddyEntry)
+                        {
+                            sLog.outErrorDb("Table `%s` has no buddy entry defined in SCRIPT_COMMAND_FORMATION for script id %u", tablename, tmp.id);
+                            continue;
+                        }
+                        break;
+                    }
+
+                    case 4: // Add buddy to formation
+                    {
+                        if (!tmp.buddyEntry)
+                        {
+                            sLog.outErrorDb("Table `%s` has no buddy entry defined in SCRIPT_COMMAND_FORMATION for script id %u", tablename, tmp.id);
+                            continue;
+                        }
+                        break;
+                    }
+
+                    case 5: // switch formation shape
+                    {
+                        if (tmp.formationData.data1 >= SpawnGroupFormationType::SPAWN_GROUP_FORMATION_TYPE_COUNT)
+                        {
+                            sLog.outErrorDb("Table `%s` uses invalid formation shape id(%u) for script id %u.", tablename, tmp.formationData.data1, tmp.id);
+                            continue;
+                        }
+                        break;
+                    }
+
+                    default:
+                        sLog.outErrorDb("Table `%s` unknown formation command %u, skipping.", tablename, tmp.formationData.command);
+                        continue;
+                }
+
+                break;
+            }
             default:
             {
                 sLog.outErrorDb("Table `%s` unknown command %u, skipping.", tablename, tmp.command);
@@ -1540,6 +1583,18 @@ bool ScriptAction::ExecuteDbscriptCommand(WorldObject* pSource, WorldObject* pTa
         {
             if (LogIfNotUnit(pSource))
                 break;
+
+            Creature* creature = static_cast<Creature*>(pSource);
+
+            if (m_script->textId[0])
+            {
+                if (m_script->textId[0] == 1)
+                {
+                    auto respPos = creature->GetRespawnPosition();
+                    creature->GetMotionMaster()->MovePoint(0, respPos, ForcedMovement(m_script->moveTo.forcedMovement), 0.f, true);
+                }
+                break;
+            }
 
             // Just turn around
             if ((m_script->x == 0.0f && m_script->y == 0.0f && m_script->z == 0.0f) ||
@@ -2616,6 +2671,116 @@ bool ScriptAction::ExecuteDbscriptCommand(WorldObject* pSource, WorldObject* pTa
             Creature* creature = static_cast<Creature*>(pSource);
             creature->SetInCombatWithZone();
             creature->AI()->AttackClosestEnemy();
+            break;
+        }
+        case SCRIPT_COMMAND_FORMATION:                      // 60
+        {
+            if (LogIfNotCreature(pTarget))
+                return false;
+
+            Creature* leader = static_cast<Creature*>(pTarget);
+
+            auto currSlot = leader->GetFormationSlot();
+            if (!currSlot)
+            {
+                sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed. %s in not in formation!", m_table, m_script->id, m_script->command, leader->GetGuidStr().c_str());
+                return true;
+            }
+
+            auto formationData = currSlot->GetFormationData();
+
+            switch (m_script->formationData.command)
+            {
+//             case 0:                                     // mirror mode
+//             {
+//                 switch (m_script->formationData.data1)
+//                 {
+//                 case 0:
+//                     formationData->SetMirrorState(!formationData->GetMirrorState());
+//                     break;
+//                 case 1:
+//                     formationData->SetMirrorState(true);
+//                     break;
+//                 case  2:
+//                     formationData->SetMirrorState(false);
+//                     break;
+//                 default:
+//                     sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed. Invalid value for datalong!", m_table, m_script->id, m_script->command, m_script->formationData.data1);
+//                     break;
+//                 }
+//                 break;
+//             }
+
+//             case 1:                                     // set specific template
+//             {
+//                 if (m_script->formationData.data1 < MAX_GROUP_FORMATION_TYPE)
+//                 {
+//                     if (!currSlot->GetFormationData()->SwitchFormation(m_script->formationData.data1))
+//                         sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed.", m_table, m_script->id, m_script->command);
+//                 }
+//                 else
+//                 {
+//                     sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed. Formation id(%u) is not correct.", m_table, m_script->id, m_script->command, m_script->formationData.data1);
+//                     return true;
+//                 }
+//                 break;
+//             }
+
+//             case 2:                                     // disband formation
+//             {
+//                 formationData->ClearMoveGen();
+//                 break;
+//             }
+
+//             case 3:                                     // Reset formation members
+//             {
+//                 formationData->Reset();
+//                 break;
+//             }
+            case 2:                         // set formation
+            {
+                if (LogIfNotCreature(pSource))
+                    return false;
+
+
+                break;
+            }
+            case 3:
+            {
+                if (LogIfNotCreature(pSource))
+                    return false;
+
+                currSlot->GetFormationData()->Add(static_cast<Creature*>(pSource));
+                break;
+            }
+            case 4:
+            {
+                if (LogIfNotCreature(pSource))
+                    return false;
+
+                currSlot->GetFormationData()->Remove(static_cast<Creature*>(pSource));
+                break;
+            }
+            case 5:
+            {
+                if (m_script->formationData.data1 < static_cast<uint32>(SpawnGroupFormationType::SPAWN_GROUP_FORMATION_TYPE_COUNT))
+                {
+                    if (!currSlot->GetFormationData()->SwitchFormation(static_cast<SpawnGroupFormationType>(m_script->formationData.data1)))
+                        sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed.", m_table, m_script->id, m_script->command);
+                }
+                else
+                {
+                    sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed. Formation id(%u) is not correct.", m_table, m_script->id, m_script->command, m_script->formationData.data1);
+                    return true;
+                }
+                break;
+            }
+
+            default:
+                sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed. Invalid value for formation command!", m_table, m_script->id, m_script->command, m_script->formationData.command);
+                break;
+            }
+
             break;
         }
         default:
