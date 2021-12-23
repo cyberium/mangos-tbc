@@ -786,7 +786,7 @@ void ScriptMgr::LoadScripts(ScriptMapMapName& scripts, const char* tablename)
             case SCRIPT_COMMAND_ZONE_PULSE:                 // 50
                 break;
 
-            case SCRIPT_COMMAND_FORMATION:                  // 60
+            case SCRIPT_COMMAND_SPAWN_GROUP:                // 60
             {
                 switch (tmp.formationData.command)
                 {
@@ -2673,7 +2673,7 @@ bool ScriptAction::ExecuteDbscriptCommand(WorldObject* pSource, WorldObject* pTa
             creature->AI()->AttackClosestEnemy();
             break;
         }
-        case SCRIPT_COMMAND_FORMATION:                      // 60
+        case SCRIPT_COMMAND_SPAWN_GROUP:                    // 60
         {
             if (LogIfNotCreature(pTarget))
                 return false;
@@ -2681,13 +2681,9 @@ bool ScriptAction::ExecuteDbscriptCommand(WorldObject* pSource, WorldObject* pTa
             Creature* leader = static_cast<Creature*>(pTarget);
 
             auto currSlot = leader->GetFormationSlot();
-            if (!currSlot)
-            {
-                sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed. %s in not in formation!", m_table, m_script->id, m_script->command, leader->GetGuidStr().c_str());
-                return true;
-            }
-
-            auto formationData = currSlot->GetFormationData();
+            FormationData* formationData = nullptr;
+            if (currSlot)
+                formationData = currSlot->GetFormationData();
 
             switch (m_script->formationData.command)
             {
@@ -2750,7 +2746,12 @@ bool ScriptAction::ExecuteDbscriptCommand(WorldObject* pSource, WorldObject* pTa
                 if (LogIfNotCreature(pSource))
                     return false;
 
-                currSlot->GetFormationData()->Add(static_cast<Creature*>(pSource));
+                if (!formationData)
+                {
+                    sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed. %s in not in formation!", m_table, m_script->id, m_script->command, leader->GetGuidStr().c_str());
+                    break;
+                }
+                formationData->Add(static_cast<Creature*>(pSource));
                 break;
             }
             case 4:
@@ -2758,14 +2759,25 @@ bool ScriptAction::ExecuteDbscriptCommand(WorldObject* pSource, WorldObject* pTa
                 if (LogIfNotCreature(pSource))
                     return false;
 
-                currSlot->GetFormationData()->Remove(static_cast<Creature*>(pSource));
+                if (!formationData)
+                {
+                    sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed. %s in not in formation!", m_table, m_script->id, m_script->command, leader->GetGuidStr().c_str());
+                    break;
+                }
+                formationData->Remove(static_cast<Creature*>(pSource));
                 break;
             }
             case 5:
             {
+                if (!formationData)
+                {
+                    sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed. %s in not in formation!", m_table, m_script->id, m_script->command, leader->GetGuidStr().c_str());
+                    break;
+                }
+
                 if (m_script->formationData.data1 < static_cast<uint32>(SpawnGroupFormationType::SPAWN_GROUP_FORMATION_TYPE_COUNT))
                 {
-                    if (!currSlot->GetFormationData()->SwitchFormation(static_cast<SpawnGroupFormationType>(m_script->formationData.data1)))
+                    if (!formationData->SwitchFormation(static_cast<SpawnGroupFormationType>(m_script->formationData.data1)))
                         sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed.", m_table, m_script->id, m_script->command);
                 }
                 else
