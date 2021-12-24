@@ -1267,13 +1267,15 @@ std::string FormationData::to_string() const
     };
 
     std::string fType = FormationType[static_cast<uint32>(m_currentFormationShape)];
-    result << "Formation group id: " << m_fEntry->GroupId << "\n";
-    result << "Shape: " << fType << "\n";
-    result << "Spread: " << m_fEntry->Spread << "\n";
-    result << "MovementId: " << m_fEntry->MovementID << "\n";
-    result << "Options: " << m_fEntry->Options << "\n";
-    result << "Comment: " << m_fEntry->Comment << "\n";
-
+    std::string fMoveType = GetMoveTypeStr(m_masterMotionType);
+    std::string fOptions = m_keepCompact ? ", keepCompact" : "no options";
+    result << "Formation group id: " << m_fEntry->GroupId    << "\n";
+    result << "Shape: "              << fType                << "\n";
+    result << "Spread: "             << m_fEntry->Spread     << "\n";
+    result << "MovementType: "       << fMoveType            << "\n";
+    result << "MovementId: "         << m_fEntry->MovementID << "\n";
+    result << "Options: "            << fOptions             << "\n";
+    result << "Comment: "            << m_fEntry->Comment    << "\n";
 
     for (auto slot : m_slotsMap)
     {
