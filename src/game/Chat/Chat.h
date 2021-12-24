@@ -488,10 +488,6 @@ class ChatHandler
         bool HandleNpcFormationInfoCommand(char* args);
         bool HandleNpcFormationResetCommand(char* args);
         bool HandleNpcFormationSwitchCommand(char* args);
-        bool HandleNpcFormationSetMasterCommand(char* args);
-        bool HandleNpcFormationCompactCommand(char* args);
-        bool HandleNpcFormationAddCommand(char* args);
-        bool HandleNpcFormationCreateCommand(char* args);
 
         // TODO: NpcCommands that needs to be fixed :
         bool HandleNpcAddWeaponCommand(char* args);
