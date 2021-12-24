@@ -2465,7 +2465,7 @@ bool ChatHandler::HandleNpcFormationSwitchCommand(char* args)
 
     if (formationId >= static_cast<uint32>(SpawnGroupFormationType::SPAWN_GROUP_FORMATION_TYPE_COUNT))
     {
-        PSendSysMessage("Formation shape id should be in 0..%u range!", static_cast<uint32>(SpawnGroupFormationType::SPAWN_GROUP_FORMATION_TYPE_COUNT));
+        PSendSysMessage("Formation shape id should be in 0..%u range!", static_cast<uint32>(SpawnGroupFormationType::SPAWN_GROUP_FORMATION_TYPE_COUNT) - 1);
         return true;
     }
 
