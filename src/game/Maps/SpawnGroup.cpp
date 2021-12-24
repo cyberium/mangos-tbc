@@ -374,6 +374,9 @@ void FormationData::Initialize()
 
     // provided slot id should be ordered with no gap!
     m_slotGuid = m_slotsMap.size();
+
+    if ((m_fEntry->Options & static_cast<uint32>(SPAWN_GROUP_FORMATION_OPTION_KEEP_CONPACT)) != 0)
+        m_keepCompact = true;
 }
 
 bool FormationData::SetFollowersMaster()
@@ -1073,7 +1076,7 @@ void FormationData::FixSlotsPositions()
     // only take account of the followers
     --totalMembers;
 
-    switch (GetFormationType())
+    switch (m_currentFormationShape)
     {
         // random formation
         case SPAWN_GROUP_FORMATION_TYPE_RANDOM:

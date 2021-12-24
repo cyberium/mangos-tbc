@@ -66,7 +66,6 @@ class CreatureGroup : public SpawnGroup
     public:
         CreatureGroup(SpawnGroupEntry const& entry, Map& map);
         void RemoveObject(WorldObject* wo) override;
-
         void TriggerLinkingEvent(uint32 event, Unit* target);
 
         void SetFormationData(FormationEntrySPtr fEntry);
@@ -100,112 +99,108 @@ class GameObjectGroup : public SpawnGroup
 
 class FormationSlotData
 {
-public:
-    FormationSlotData(uint32 slotId, uint32 _ownerDBGuid, CreatureGroup* creatureGrp, SpawnGroupFormationSlotType type = SpawnGroupFormationSlotType::SPAWN_GROUP_FORMATION_SLOT_TYPE_STATIC)
-        : m_slotId(slotId), m_realOwnerGuid(_ownerDBGuid), m_creatureGroup(creatureGrp), m_slotType(type), m_owner(nullptr),
-        m_angle(0), m_distance(1), m_recomputePosition(true) {}
+    public:
+        FormationSlotData(uint32 slotId, uint32 _ownerDBGuid, CreatureGroup* creatureGrp, SpawnGroupFormationSlotType type = SpawnGroupFormationSlotType::SPAWN_GROUP_FORMATION_SLOT_TYPE_STATIC)
+            : m_slotId(slotId), m_realOwnerGuid(_ownerDBGuid), m_creatureGroup(creatureGrp), m_slotType(type), m_owner(nullptr),
+            m_angle(0), m_distance(1), m_recomputePosition(true) {}
 
-    uint32 GetSlotId() const { return m_slotId; }
-    Unit* GetMaster();
-    bool IsFormationMaster();
+        uint32 GetSlotId() const { return m_slotId; }
+        Unit* GetMaster();
+        bool IsFormationMaster();
 
-    float GetAngle();
-    float GetDistance();
+        float GetAngle();
+        float GetDistance();
 
-    void SetAngle(float angle) { m_angle = angle; }
-    void SetDistance(float distance) { m_distance = distance; }
+        void SetAngle(float angle) { m_angle = angle; }
+        void SetDistance(float distance) { m_distance = distance; }
 
-    bool& GetRecomputePosition() { return m_recomputePosition; }
+        bool& GetRecomputePosition() { return m_recomputePosition; }
 
-    CreatureGroup* GetCreatureGroup() { return m_creatureGroup; }
-    FormationData* GetFormationData() { return m_creatureGroup->GetFormationData(); }
-    void SetOwner(Unit* owner) { m_owner = owner; }
-    Unit* GetOwner() { return m_owner; }
-    uint32 GetRealOwnerGuid() const { return m_realOwnerGuid; }
-    SpawnGroupFormationSlotType GetSlotType() const { return m_slotType; }
-    bool IsRemovable() const
-    {
-        switch (m_slotType)
+        CreatureGroup* GetCreatureGroup() { return m_creatureGroup; }
+        FormationData* GetFormationData() { return m_creatureGroup->GetFormationData(); }
+        void SetOwner(Unit* owner) { m_owner = owner; }
+        Unit* GetOwner() { return m_owner; }
+        uint32 GetRealOwnerGuid() const { return m_realOwnerGuid; }
+        SpawnGroupFormationSlotType GetSlotType() const { return m_slotType; }
+        bool IsRemovable() const
         {
-        case SPAWN_GROUP_FORMATION_SLOT_TYPE_STATIC:
+            switch (m_slotType)
+            {
+                case SPAWN_GROUP_FORMATION_SLOT_TYPE_STATIC:
+                    return false;
+                case SPAWN_GROUP_FORMATION_SLOT_TYPE_SCRIPT:
+                case SPAWN_GROUP_FORMATION_SLOT_TYPE_PLAYER:
+                    return true;
+                default:
+                    break;
+            }
             return false;
-        case SPAWN_GROUP_FORMATION_SLOT_TYPE_SCRIPT:
-        case SPAWN_GROUP_FORMATION_SLOT_TYPE_PLAYER:
-            return true;
-        default:
-            break;
         }
-        return false;
-    }
 
-private:
-    uint32 m_slotId;
-    uint32 m_realOwnerGuid;
-    CreatureGroup* m_creatureGroup;
-    Unit* m_owner;
-    float m_angle;
-    float m_distance;
-    bool m_recomputePosition;
-    SpawnGroupFormationSlotType m_slotType;
+    private:
+        uint32 m_slotId;
+        uint32 m_realOwnerGuid;
+        CreatureGroup* m_creatureGroup;
+        Unit* m_owner;
+        float m_angle;
+        float m_distance;
+        bool m_recomputePosition;
+        SpawnGroupFormationSlotType m_slotType;
 };
 
 class FormationData
 {
-public:
-    FormationData(CreatureGroup* gData);
-    FormationData(CreatureGroup* gData, FormationEntrySPtr fEntry);
-    FormationData() = delete;
-    ~FormationData();
+    public:
+        FormationData(CreatureGroup* gData);
+        FormationData(CreatureGroup* gData, FormationEntrySPtr fEntry);
+        FormationData() = delete;
+        ~FormationData();
 
-    bool SetFollowersMaster();
-    bool SwitchFormation(SpawnGroupFormationType newShape);
-    void Disband();
-    void ClearMoveGen();
+        Unit* GetMaster();
+        void Add(Creature* creature);
+        void Add(Player* player);
+        void Remove(Creature* creature);
+        void Remove(Player* player);
+        void Remove(Unit* unit);
+        void Reset();
+        void Disband();
+        void OnDeath(Creature* creature);
+        void OnDelete(Creature* creature);
+        void Compact(bool set = true);
+        bool SwitchFormation(SpawnGroupFormationType newShape);
 
-    Unit* GetMaster();
-    void Reset();
-    void OnDeath(Creature* creature);
-    void OnDelete(Creature* creature);
-    int32 GetDefaultSlotId(uint32 dbGuid);
-    FormationSlotDataSPtr GetDefaultSlot(uint32 dbGuid, SpawnGroupFormationSlotType slotType = SPAWN_GROUP_FORMATION_SLOT_TYPE_STATIC);
-    void SwitchSlotOwner(FormationSlotDataSPtr slotA, FormationSlotDataSPtr slotB);
-    bool FreeSlot(FormationSlotDataSPtr slot);
-    bool AddInFormationSlot(Unit* newUnit, SpawnGroupFormationSlotType slotType = SPAWN_GROUP_FORMATION_SLOT_TYPE_STATIC);
-    void Compact(bool set = true);
-    void Add(Creature* creature);
-    void Add(Player* player);
-    void Remove(Creature* creature);
-    void Remove(Player* player);
-    void Remove(Unit* unit);
-    void FixSlotsPositions();
+        FormationSlotDataSPtr SetFormationSlot(Creature* creature, SpawnGroupFormationSlotType slotType = SPAWN_GROUP_FORMATION_SLOT_TYPE_STATIC);
+        std::string to_string() const;
 
-    SpawnGroupFormationType GetFormationType() const { return m_currentFormationShape; }
-    FormationSlotDataSPtr SetFormationSlot(Creature* creature, SpawnGroupFormationSlotType slotType = SPAWN_GROUP_FORMATION_SLOT_TYPE_STATIC);
-    std::string to_string() const;
+    private:
+        void Initialize();
+        void SetMasterMovement();
+        bool TrySetNewMaster(Unit* masterCandidat = nullptr);
+        FormationSlotDataSPtr GetFirstEmptySlot();
+        FormationSlotDataSPtr GetFirstAliveSlot();
+        int32 GetDefaultSlotId(uint32 dbGuid);
+        FormationSlotDataSPtr GetDefaultSlot(uint32 dbGuid, SpawnGroupFormationSlotType slotType = SPAWN_GROUP_FORMATION_SLOT_TYPE_STATIC);
+        void FixSlotsPositions();
+        void SwitchSlotOwner(FormationSlotDataSPtr slotA, FormationSlotDataSPtr slotB);
+        bool SetFollowersMaster();
+        void ClearMoveGen();
+        bool FreeSlot(FormationSlotDataSPtr slot);
+        bool AddInFormationSlot(Unit* newUnit, SpawnGroupFormationSlotType slotType = SPAWN_GROUP_FORMATION_SLOT_TYPE_STATIC);
 
-private:
-    void Initialize();
-    void SetMasterMovement();
-    bool TrySetNewMaster(Unit* masterCandidat = nullptr);
-    FormationSlotDataSPtr GetFirstEmptySlot();
-    FormationSlotDataSPtr GetFirstAliveSlot();
-    CreatureGroup* m_groupData;
-    FormationEntrySPtr m_fEntry;
-    SpawnGroupFormationType m_currentFormationShape;
-    FormationSlotMap m_slotsMap;
-    uint32 m_slotGuid;
+        CreatureGroup* m_groupData;
+        FormationEntrySPtr m_fEntry;
+        SpawnGroupFormationType m_currentFormationShape;
+        FormationSlotMap m_slotsMap;
+        MovementGeneratorType m_masterMotionType;
+        RespawnPosistion m_spawnPos;
 
-    bool m_mirrorState;
-    bool m_keepCompact;
-    uint32 m_realMasterDBGuid;
+        bool m_mirrorState;
+        bool m_keepCompact;
 
-    MovementGeneratorType m_masterMotionType;
-
-    uint32 m_lastWP;
-    uint32 m_wpPathId;
-    ShortTimeTracker m_updateDelay;
-
-    RespawnPosistion m_spawnPos;
+        uint32 m_realMasterDBGuid;
+        uint32 m_slotGuid;
+        uint32 m_lastWP;
+        uint32 m_wpPathId;
 };
 
 #endif
