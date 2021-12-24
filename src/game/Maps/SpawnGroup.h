@@ -104,7 +104,6 @@ public:
     FormationSlotData(uint32 slotId, uint32 _ownerDBGuid, CreatureGroup* creatureGrp, SpawnGroupFormationSlotType type = SpawnGroupFormationSlotType::SPAWN_GROUP_FORMATION_SLOT_TYPE_STATIC)
         : m_slotId(slotId), m_realOwnerGuid(_ownerDBGuid), m_creatureGroup(creatureGrp), m_slotType(type), m_owner(nullptr),
         m_angle(0), m_distance(1), m_recomputePosition(true) {}
-    //FormationSlotData(float _angle, float _distance = 1) : Angle(_angle), Distance(_distance), RecomputePosition(true) {}
 
     uint32 GetSlotId() const { return m_slotId; }
     Unit* GetMaster();
@@ -160,37 +159,18 @@ public:
 
     bool SetFollowersMaster();
     bool SwitchFormation(SpawnGroupFormationType newShape);
-    //bool SetNewMaster(Creature* creature);
     void Disband();
     void ClearMoveGen();
 
-    //void SetMirrorState(bool state) { m_mirrorState = state; };
-    //bool GetMirrorState() const { return m_mirrorState; }
-
     Unit* GetMaster();
-    //float GetSpread() const { return m_fEntry.Spread; }
-    //uint32 GetRealMasterGuid() const { return m_realMasterGuid; }
     void Reset();
-
-    //void OnCreate(Unit* entity);
-    void OnMasterRemoved();
-    //void OnSpawn(Unit* entity);
     void OnDeath(Creature* creature);
-    void OnDelete(Creature* entity);
-
+    void OnDelete(Creature* creature);
     int32 GetDefaultSlotId(uint32 dbGuid);
-    //FormationSlotDataSPtr GetDefaultSlot(uint32 dbGuid);
     FormationSlotDataSPtr GetDefaultSlot(uint32 dbGuid, SpawnGroupFormationSlotType slotType = SPAWN_GROUP_FORMATION_SLOT_TYPE_STATIC);
     void SwitchSlotOwner(FormationSlotDataSPtr slotA, FormationSlotDataSPtr slotB);
     bool FreeSlot(FormationSlotDataSPtr slot);
-    //bool AddInFormationSlot(Unit* newUnit, FormationSlotDataSPtr newSlot);
-    //bool AddInFormationSlot(Unit* newUnit);
     bool AddInFormationSlot(Unit* newUnit, SpawnGroupFormationSlotType slotType = SPAWN_GROUP_FORMATION_SLOT_TYPE_STATIC);
-    //void OnSlotAdded(Unit* entity);
-    //void OnWaypointStart();
-    //void OnWaypointEnd();
-
-    void Replace(Unit* newUnit, FormationSlotDataSPtr newSlott = nullptr);
     void Compact(bool set = true);
     void Add(Creature* creature);
     void Add(Player* player);
@@ -199,15 +179,12 @@ public:
     void Remove(Unit* unit);
     void FixSlotsPositions();
 
-
     SpawnGroupFormationType GetFormationType() const { return m_currentFormationShape; }
-
     FormationSlotDataSPtr SetFormationSlot(Creature* creature, SpawnGroupFormationSlotType slotType = SPAWN_GROUP_FORMATION_SLOT_TYPE_STATIC);
     std::string to_string() const;
 
 private:
     void Initialize();
-    //void SetMasterMovement(Creature* master);
     void SetMasterMovement();
     bool TrySetNewMaster(Unit* masterCandidat = nullptr);
     FormationSlotDataSPtr GetFirstEmptySlot();
@@ -218,11 +195,8 @@ private:
     FormationSlotMap m_slotsMap;
     uint32 m_slotGuid;
 
-    bool m_formationEnabled;
     bool m_mirrorState;
     bool m_keepCompact;
-    bool m_validFormation;
-    Creature* m_realMaster;
     uint32 m_realMasterDBGuid;
 
     MovementGeneratorType m_masterMotionType;
@@ -231,7 +205,6 @@ private:
     uint32 m_wpPathId;
     ShortTimeTracker m_updateDelay;
 
-//    FormationSlotDataSPtr m_masterSlot;
     RespawnPosistion m_spawnPos;
 };
 

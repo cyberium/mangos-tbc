@@ -24,7 +24,7 @@
 #include "Maps/SpawnGroupDefines.h"
 #include "Maps/MapPersistentStateMgr.h"
 #include "Globals/ObjectMgr.h"
-#include <cassert>
+#include "MotionGenerators/TargetedMovementGenerator.h"
 
 SpawnGroup::SpawnGroup(SpawnGroupEntry const& entry, Map& map, uint32 typeId) : m_entry(entry), m_map(map), m_objectTypeId(typeId), m_enabled(m_entry.EnabledByDefault)
 {
@@ -335,28 +335,14 @@ void GameObjectGroup::RemoveObject(WorldObject* wo)
     m_map.GetPersistentState()->RemoveGameobjectFromGrid(wo->GetDbGuid(), data);
 }
 
-
-// Formation
-
-#include "Entities/Unit.h"
-#include "Database/Database.h"
-#include "Policies/Singleton.h"
-#include "Entities/Creature.h"
-
-#include "Movement/MoveSplineInit.h"
-#include "Movement/MoveSpline.h"
-
-#include "Pools/PoolManager.h"
-#include "MotionGenerators/TargetedMovementGenerator.h"
-#include "Timer.h"
-#include "Maps/MapManager.h"
+////////////////////
+// Formation code //
+////////////////////
 
 FormationData::FormationData(CreatureGroup* gData) :
     m_groupData(gData), m_fEntry(gData->GetFormationEntry()),
     m_currentFormationShape(gData->GetFormationEntry()->Type),
-    m_formationEnabled(false), m_mirrorState(false),
-    m_keepCompact(false), m_validFormation(true),
-    m_lastWP(0), m_wpPathId(0), m_realMaster(nullptr),
+    m_mirrorState(false), m_keepCompact(false), m_lastWP(0), m_wpPathId(0),
     m_masterMotionType(static_cast<MovementGeneratorType>(gData->GetFormationEntry()->MovementType))
 {
     Initialize();
@@ -364,9 +350,7 @@ FormationData::FormationData(CreatureGroup* gData) :
 
 FormationData::FormationData(CreatureGroup* gData, FormationEntrySPtr fEntry) :
     m_groupData(gData), m_fEntry(fEntry), m_currentFormationShape(fEntry->Type),
-    m_formationEnabled(false), m_mirrorState(false),
-    m_keepCompact(false), m_validFormation(true),
-    m_lastWP(0), m_wpPathId(0), m_realMaster(nullptr),
+    m_mirrorState(false), m_keepCompact(false), m_lastWP(0), m_wpPathId(0),
     m_masterMotionType(static_cast<MovementGeneratorType>(fEntry->MovementType))
 {
     Initialize();
@@ -446,12 +430,6 @@ bool FormationData::SwitchFormation(SpawnGroupFormationType newShape)
     return true;
 }
 
-
-// bool FormationData::SetNewMaster(Creature* creature)
-// {
-//     return TrySetNewMaster(creature);
-// }
-
 // remove all creatures from formation data
 void FormationData::Disband()
 {
@@ -524,9 +502,6 @@ void FormationData::SetMasterMovement()
     {
         newMaster->GetMotionMaster()->MoveIdle();
     }
-
-    if (!m_realMasterDBGuid)
-        m_realMasterDBGuid = newMaster->GetDbGuid();
 }
 
 FormationSlotDataSPtr FormationData::GetFirstEmptySlot()
@@ -582,27 +557,10 @@ bool FormationData::TrySetNewMaster(Unit* masterCandidat /*= nullptr*/)
     if (aliveSlot)
     {
         SwitchSlotOwner(masterSlot, aliveSlot);
-        //Replace(aliveSlot->GetOwner(), m_masterSlot);
-//         Unit* oldMaster = nullptr;
-//         if (m_masterSlot->GetOwner() && m_masterSlot->GetOwner()->IsAlive())
-//             oldMaster = m_masterSlot->GetOwner();
-//         Unit* newMasterUnit = aliveSlot->GetOwner();
-//         m_masterSlot->SetOwner(newMasterUnit);
-//         newMasterUnit->SetFormationSlot(m_masterSlot);
-//         
-//         aliveSlot->SetOwner(oldMaster);
-//         if (oldMaster)
-//             oldMaster->SetFormationSlot(aliveSlot);
-
         FixSlotsPositions();
         SetMasterMovement();
         SetFollowersMaster();
         return true;
-    }
-    else
-    {
-        // we can remove this formation from memory
-        m_validFormation = false;
     }
 
     return false;
@@ -659,55 +617,7 @@ void FormationData::Reset()
     {
         TrySetNewMaster(masterSlotItr->second->GetOwner());
     }
-
-    // just be sure to fix all position
-    //m_needToFixPositions = true;
 }
-
-// void FormationData::OnCreate(Unit* entity)
-// {
-//     if (entity->IsCreature())
-//     {
-//         auto creature = static_cast<Creature*>(entity);
-//         if (creature->IsTemporarySummon())
-//         {
-//             OnSpawn(entity);
-//         }
-//     }
-// }
-
-void FormationData::OnMasterRemoved()
-{
-    //m_masterSlot = nullptr;
-}
-
-// void FormationData::OnSpawn(Unit* entity)
-// {
-//     auto freeSlot = m_groupData->GetFirstFreeSlot(entity->GetGUIDLow());
-// 
-//     MANGOS_ASSERT(freeSlot != nullptr);
-// 
-//     // respawn of master before FormationData::Update occur
-//     if (freeSlot->IsFormationMaster())
-//     {
-//         TrySetNewMaster(entity);
-//         return;
-//     }
-// 
-//     auto master = GetMaster();
-//     if (master)
-//         entity->Relocate(master->GetPositionX(), master->GetPositionY(), master->GetPositionZ());
-// 
-//     auto oldSlot = entity->GetGroupSlot();
-// 
-//     if (freeSlot != oldSlot)
-//         Replace(entity, freeSlot);
-// 
-//     if (m_keepCompact)
-//         FixSlotsPositions(true);
-// 
-//     SetFollowersMaster();
-// }
 
 void FormationData::OnDeath(Creature* creature)
 {
@@ -719,11 +629,9 @@ void FormationData::OnDeath(Creature* creature)
     bool formationMaster = false;
     if (slot->IsFormationMaster())
     {
-       // OnMasterRemoved();
         m_lastWP = creature->GetMotionMaster()->getLastReachedWaypoint();
         m_wpPathId = creature->GetMotionMaster()->GetPathId();
 
-        //m_updateDelay.Reset(0); // Make formation wait 5 sec before choosing another master
         formationMaster = true;
     }
     slot->SetOwner(nullptr);
@@ -738,28 +646,9 @@ void FormationData::OnDeath(Creature* creature)
 
 void FormationData::OnDelete(Creature* creature)
 {
-//     auto slot = creature->GetFormationSlot();
-// 
-//     if (!slot)
-//         return;
-// 
-//     sLog.outString("Deleting creature from formation(%u)", m_groupData->GetGroupEntry().Id);
-//     if (slot->IsFormationMaster())
-//     {
-//         OnMasterRemoved();
-//     }
-//     slot->GetOwner() = nullptr;
+    // we can handle it like a death event
+    OnDeath(creature);
 }
-
-// void FormationData::OnWaypointStart()
-// {
-//     SetMirrorState(false);
-// }
-// 
-// void FormationData::OnWaypointEnd()
-// {
-//     SetMirrorState(true);
-// }
 
 // get formation slot id for provided dbGuid, return -1 if not found
 int32 FormationData::GetDefaultSlotId(uint32 dbGuid)
@@ -870,63 +759,6 @@ bool FormationData::AddInFormationSlot(Unit* newUnit, SpawnGroupFormationSlotTyp
 
     sLog.outString("Slot(%u) filled by %s in formation(%u)", slot->GetSlotId(), newUnit->GetGuidStr().c_str(), m_groupData->GetGroupEntry().Id);
     return true;
-}
-
-// bool FormationData::AddInFormationSlot(Unit* newUnit, FormationSlotDataSPtr newSlot)
-// {
-//     if (!newUnit || !newUnit->IsAlive())
-//     {
-//         sLog.outError("FormationData::AddInFormationSlot> Invalid call detected! (unit is nullptr or not alive)");
-//         return false;
-//     }
-// 
-//     if (!newSlot)
-//         return AddInFormationSlot(newUnit);
-// 
-//     if (!FreeSlot(newSlot))
-//     {
-//         sLog.outError("FormationData::AddInFormationSlot> Unable to free occupied slot by %s for %s", newSlot->GetOwner()->GetGuidStr().c_str(), newUnit->GetGuidStr().c_str());
-//         return false;
-//     }
-// 
-//     newSlot->SetOwner(newUnit);
-//     newUnit->SetFormationSlot(newSlot);
-// 
-//     return true;
-// }
-
-// replace to either first available slot position or provided one
-void FormationData::Replace(Unit* newUnit, FormationSlotDataSPtr newSlot /*= nullptr*/)
-{
-//     if (!newUnit || !newUnit->IsAlive())
-//         return;
-// 
-//     Unit* oldUnit = nullptr;
-//     if (newSlot)
-//     {
-//         oldUnit = newSlot->GetOwner();
-//     }
-//     else
-//     {
-//         newSlot = GetFirstEmptySlot();
-//         if (!newSlot)
-//         {
-//             sLog.outError("FormationData::Replace> Unable to find free place in formation groupID: %u for %s",
-//                 m_groupData->GetGroupId(), newUnit->GetGuidStr().c_str());
-//             return;
-//         }
-//     }
-// 
-//     auto newUnitExistingSlot = newUnit->GetFormationSlot();
-//     newSlot->SetOwner(newUnit);
-//     newUnit->SetFormationSlot(newSlot);
-// 
-//     if (newUnitExistingSlot)
-//         newUnitExistingSlot->SetOwner(oldUnit);
-//     if (oldUnit)
-//     {
-//         oldUnit->SetFormationSlot(newUnitExistingSlot);
-//     }
 }
 
 void FormationData::Compact(bool set /*= true*/)
@@ -1132,90 +964,15 @@ FormationSlotDataSPtr FormationData::SetFormationSlot(Creature* creature, SpawnG
     if (!AddInFormationSlot(creature, slotType))
         return nullptr;
 
-//     uint32 slotId = -1;
-//     for (auto const& entry : gEntry.DbGuids)
-//     {
-//         if (entry.DbGuid == dbGuid)
-//         {
-//             slotId = entry.SlotId;
-//             break;
-//         }
-//     }
-// 
-//     if (slotId < 0)
-//         return nullptr;
-// 
-//     auto& slot = m_slotsMap.at(slotId);
-//     if (slot->GetOwner() && slot->GetOwner()->IsAlive())
-//     {
-//         if (slot->GetOwner()->GetDbGuid() != slot->GetRealOwnerGuid())
-//         {
-//             // the current owner have to let its place
-//             auto freeSlot = GetFirstEmptySlot();
-//             if (freeSlot)
-//             {
-//                 // set old creature to new slot
-//                 freeSlot->SetOwner(slot->GetOwner());
-//                 freeSlot->GetOwner()->SetFormationSlot(freeSlot);
-// 
-//                 // set new creature to the slot
-//                 slot->SetOwner(creature);
-//                 creature->SetFormationSlot(slot);
-//             }
-//             else
-//             {
-//                 // no free space remove old creature from formation
-//                 Unit* oldUnit = slot->GetOwner();
-//                 oldUnit->GetMotionMaster()->Clear(true);
-//                 oldUnit->SetFormationSlot(nullptr);
-// 
-//                 sLog.outError("FormationData::Replace> Unable to find free place in formation groupID: %u for %s",
-//                     m_groupData->GetGroupId(), slot->GetOwner()->GetGuidStr().c_str());
-// 
-//                 // set new creature to the slot
-//                 slot->SetOwner(creature);
-//                 creature->SetFormationSlot(slot);
-//             }
-//         }
-//         else
-//         {
-//             // creature in the slot should not be moved
-//             //Replace(creature, slot);
-//             auto freeSlot = GetFirstEmptySlot();
-//             if (freeSlot)
-//             {
-//                 // assign new creature to free slot
-//                 freeSlot->SetOwner(creature);
-//                 creature->SetFormationSlot(freeSlot);
-//             }
-//             else
-//             {
-//                 // ignore new creature no space for it
-//                 sLog.outError("FormationData::Replace> Unable to find free place in formation groupID: %u for %s",
-//                     m_groupData->GetGroupId(), creature->GetGuidStr().c_str());
-// 
-//                 return nullptr;
-//             }
-//         }
-//     }
-//     else
-//     {
-//         slot->SetOwner(creature);
-//         creature->SetFormationSlot(slot);
-//     }
-
-    //slot->staticSlot = creature->IsTemporarySummon();
-
     // set the creature as active to avoid some problem
     creature->SetActiveObjectState(true);
 
     auto slot = creature->GetFormationSlot();
-    if (!m_realMaster)
+    if (!m_realMasterDBGuid)
     {
-        if (creature->IsTemporarySummon() || (slot->GetSlotId() == 0 && slot->GetRealOwnerGuid() == creature->GetDbGuid()))
+        if (slot->GetSlotId() == 0)
         {
-            m_formationEnabled = true;
-            m_realMaster = creature;
+            m_realMasterDBGuid = dbGuid;
             creature->GetRespawnCoord(m_spawnPos.x, m_spawnPos.y, m_spawnPos.z, nullptr, &m_spawnPos.radius);
 
             switch (creature->GetDefaultMovementType())
@@ -1236,11 +993,6 @@ FormationSlotDataSPtr FormationData::SetFormationSlot(Creature* creature, SpawnG
             }
         }
     }
-
-    //if (creature->IsAlive())
-    //    SetFollowersMaster();
-
-    //FollowMaster(creature);
 
     if (GetMaster())
     {
