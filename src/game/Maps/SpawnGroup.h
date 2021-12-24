@@ -33,6 +33,7 @@ class GameObject;
 struct SpawnGroupEntry;
 class Map;
 class Unit;
+class CreatureGroup;
 
 class SpawnGroup
 {
@@ -50,6 +51,8 @@ class SpawnGroup
         SpawnGroupEntry const& GetGroupEntry() const { return m_entry; }
         uint32 GetGroupId() const { return m_entry.Id; }
 
+        virtual CreatureGroup* GetCreatureGroup() { return nullptr; }
+
     protected:
         SpawnGroupEntry const& m_entry;
         Map& m_map;
@@ -66,10 +69,17 @@ class CreatureGroup : public SpawnGroup
 
         void TriggerLinkingEvent(uint32 event, Unit* target);
 
+        void SetFormationData(FormationEntrySPtr fEntry);
         FormationData* GetFormationData() { return m_formationData.get(); }
-        FormationEntry const* GetFormationEntry() const { return m_entry.formationEntry.get(); }
+        FormationEntrySPtr GetFormationEntry() const { return m_entry.formationEntry; }
 
         virtual void Update() override;
+
+        virtual CreatureGroup* GetCreatureGroup() override { return this; }
+
+        Map& GetMap() { return m_map; }
+
+        void MoveHome();
 
     private:
         void ClearRespawnTimes();
@@ -120,13 +130,13 @@ public:
         {
         case SPAWN_GROUP_FORMATION_SLOT_TYPE_STATIC:
             return false;
-            break;
         case SPAWN_GROUP_FORMATION_SLOT_TYPE_SCRIPT:
         case SPAWN_GROUP_FORMATION_SLOT_TYPE_PLAYER:
             return true;
         default:
             break;
         }
+        return false;
     }
 
 private:
@@ -144,6 +154,7 @@ class FormationData
 {
 public:
     FormationData(CreatureGroup* gData);
+    FormationData(CreatureGroup* gData, FormationEntrySPtr fEntry);
     FormationData() = delete;
     ~FormationData();
 
@@ -195,12 +206,14 @@ public:
     std::string to_string() const;
 
 private:
+    void Initialize();
     //void SetMasterMovement(Creature* master);
     void SetMasterMovement();
     bool TrySetNewMaster(Unit* masterCandidat = nullptr);
     FormationSlotDataSPtr GetFirstEmptySlot();
     FormationSlotDataSPtr GetFirstAliveSlot();
     CreatureGroup* m_groupData;
+    FormationEntrySPtr m_fEntry;
     SpawnGroupFormationType m_currentFormationShape;
     FormationSlotMap m_slotsMap;
     uint32 m_slotGuid;
@@ -218,7 +231,7 @@ private:
     uint32 m_wpPathId;
     ShortTimeTracker m_updateDelay;
 
-    FormationSlotDataSPtr m_masterSlot;
+//    FormationSlotDataSPtr m_masterSlot;
     RespawnPosistion m_spawnPos;
 };
 

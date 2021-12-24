@@ -127,6 +127,7 @@ struct FormationEntry
     uint32 GroupId;
     SpawnGroupFormationType Type;
     uint32 MovementID;
+    uint32 MovementType;
     float Spread;
     uint32 Options;
     std::string Comment;

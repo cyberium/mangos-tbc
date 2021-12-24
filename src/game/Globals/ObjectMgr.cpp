@@ -1129,6 +1129,7 @@ void ObjectMgr::LoadSpawnGroups()
             fEntry->GroupId = fields[0].GetUInt32();
             uint32 fType = fields[1].GetUInt32();
             fEntry->MovementID = fields[2].GetUInt32();
+            fEntry->MovementType = WAYPOINT_MOTION_TYPE;
             fEntry->Spread = fields[3].GetFloat();
             fEntry->Options = fields[4].GetUInt32();
             fEntry->Comment = fields[5].GetCppString();

@@ -790,6 +790,11 @@ void ScriptMgr::LoadScripts(ScriptMapMapName& scripts, const char* tablename)
             {
                 switch (tmp.formationData.command)
                 {
+                    case 2: // SetFormation
+                    {
+
+                        break;
+                    }
                     case 3: // Add buddy to formation
                     {
                         if (!tmp.buddyEntry)
@@ -1592,6 +1597,18 @@ bool ScriptAction::ExecuteDbscriptCommand(WorldObject* pSource, WorldObject* pTa
                 {
                     auto respPos = creature->GetRespawnPosition();
                     creature->GetMotionMaster()->MovePoint(0, respPos, ForcedMovement(m_script->moveTo.forcedMovement), 0.f, true);
+                }
+                else if (m_script->textId[0] == 2)
+                {
+                    if (creature->GetCreatureGroup())
+                    {
+                        creature->GetCreatureGroup()->MoveHome();
+                    }
+                    else
+                    {
+                        auto respPos = creature->GetRespawnPosition();
+                        creature->GetMotionMaster()->MovePoint(0, respPos, ForcedMovement(m_script->moveTo.forcedMovement), 0.f, true);
+                    }
                 }
                 break;
             }
@@ -2680,6 +2697,13 @@ bool ScriptAction::ExecuteDbscriptCommand(WorldObject* pSource, WorldObject* pTa
 
             Creature* leader = static_cast<Creature*>(pTarget);
 
+            auto groupData = leader->GetCreatureGroup();
+//             if (!groupData)
+//             {
+//                 sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed. %s in not in creature group!", m_table, m_script->id, m_script->command, leader->GetGuidStr().c_str());
+//                 break;
+//             }
+
             auto currSlot = leader->GetFormationSlot();
             FormationData* formationData = nullptr;
             if (currSlot)
@@ -2738,7 +2762,46 @@ bool ScriptAction::ExecuteDbscriptCommand(WorldObject* pSource, WorldObject* pTa
                 if (LogIfNotCreature(pSource))
                     return false;
 
+                CreatureGroup* grpData = nullptr;
+                if (!m_script->formationData.data1)
+                {
+                    if (!groupData)
+                    {
+                        sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` script id %u, command %u and subcommand formation create(2) failed. Target group(%u) not found!",
+                            m_table, m_script->id, m_script->command, m_script->formationData.data1);
+                        break;
+                    }
+                    groupData->SetFormationData(nullptr);
+                    break;
+                }
+                else
+                {
+                    auto sgData = leader->GetMap()->GetSpawnManager().GetSpawnGroup(m_script->formationData.data1);
+                    if (!sgData || !sgData->GetCreatureGroup())
+                    {
+                        sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` script id %u, command %u and subcommand formation create(2) failed. Target group(%u) not found!",
+                            m_table, m_script->id, m_script->command, m_script->formationData.data1);
+                        break;
+                    }
+                    grpData = sgData->GetCreatureGroup();
+                }
 
+                if (grpData->GetFormationData())
+                {
+                    //
+                    break;
+                }
+
+                FormationEntrySPtr fEntry = std::make_shared<FormationEntry>();
+                fEntry->GroupId = grpData->GetGroupId();
+                fEntry->Type = static_cast<SpawnGroupFormationType>(m_script->textId[0]);
+                fEntry->Spread = m_script->x;
+                fEntry->Options = m_script->textId[1];
+                fEntry->MovementType = m_script->textId[2]; // todo need to check that data!!!
+                fEntry->MovementID = m_script->textId[3];
+                fEntry->Comment = "Dynamically created formation!";
+
+                grpData->SetFormationData(fEntry);
                 break;
             }
             case 3:
