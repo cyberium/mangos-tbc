@@ -1147,34 +1147,7 @@ bool FormationMovementGenerator::Update(Unit& unit, const uint32& diff)
     if (i_target.getTarget() != m_slot->GetMaster())
         SetNewTarget(*m_slot->GetMaster());
 
-    if (!unit.IsAlive())
-        return true;
-
-    // prevent movement while casting spells with cast time or channel time
-    if (unit.IsNonMeleeSpellCasted(false, false, true, true))
-    {
-        if (!unit.movespline->Finalized())
-        {
-            if (unit.IsClientControlled())
-                unit.StopMoving(true);
-            else
-                unit.InterruptMoving();
-        }
-        return true;
-    }
-
-    if (_hasUnitStateNotMove(unit))
-    {
-        HandleMovementFailure(unit);
-        return true;
-    }
-
-    HandleTargetedMovement(unit, diff);
-
-    if (unit.movespline->Finalized() && !i_targetReached)
-        HandleFinalizedMovement(unit);
-
-    return true;
+    return TargetedMovementGeneratorMedium::Update(unit, diff);
 }
 
 bool FormationMovementGenerator::GetPointAround(G3D::Vector3 const& originalPoint, G3D::Vector3& foundPos, float angle, float distance, bool isOnTheGround)
