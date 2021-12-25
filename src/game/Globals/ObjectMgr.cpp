@@ -1124,7 +1124,6 @@ void ObjectMgr::LoadSpawnGroups()
         {
             Field* fields = result->Fetch();
 
-            // Todo avoid creating fEntry this 2 times (second one later in map emplace)
             FormationEntrySPtr fEntry = std::make_shared<FormationEntry>();
             fEntry->GroupId = fields[0].GetUInt32();
             uint32 fType = fields[1].GetUInt32();

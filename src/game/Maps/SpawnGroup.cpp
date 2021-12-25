@@ -377,6 +377,14 @@ void FormationData::Initialize()
 
     if ((m_fEntry->Options & static_cast<uint32>(SPAWN_GROUP_FORMATION_OPTION_KEEP_CONPACT)) != 0)
         m_keepCompact = true;
+
+    if (m_groupData->GetFormationEntry())
+    {
+        // temp hack until movetype is set correctly
+        auto cData = sObjectMgr.GetCreatureData(m_realMasterDBGuid);
+        if (cData)
+            m_masterMotionType = static_cast<MovementGeneratorType>(cData->movementType);
+    }
 }
 
 bool FormationData::SetFollowersMaster()
@@ -644,7 +652,6 @@ void FormationData::OnDeath(Creature* creature)
         TrySetNewMaster();
     else if(m_keepCompact)
         FixSlotsPositions();
-
 }
 
 void FormationData::OnDelete(Creature* creature)
