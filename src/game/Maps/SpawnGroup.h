@@ -151,8 +151,7 @@ class FormationSlotData
 class FormationData
 {
     public:
-        FormationData(CreatureGroup* gData);
-        FormationData(CreatureGroup* gData, FormationEntrySPtr fEntry);
+        FormationData(CreatureGroup* gData, FormationEntrySPtr fEntry = nullptr);
         FormationData() = delete;
         ~FormationData();
 
@@ -173,7 +172,6 @@ class FormationData
         std::string to_string() const;
 
     private:
-        void Initialize();
         void SetMasterMovement();
         bool TrySetNewMaster(Unit* masterCandidat = nullptr);
         FormationSlotDataSPtr GetFirstEmptySlot();

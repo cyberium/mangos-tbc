@@ -339,29 +339,8 @@ void GameObjectGroup::RemoveObject(WorldObject* wo)
 // Formation code //
 ////////////////////
 
-FormationData::FormationData(CreatureGroup* gData) :
-    m_groupData(gData), m_fEntry(gData->GetFormationEntry()),
-    m_currentFormationShape(gData->GetFormationEntry()->Type),
-    m_mirrorState(false), m_keepCompact(false), m_lastWP(0), m_wpPathId(0),
-    m_masterMotionType(static_cast<MovementGeneratorType>(gData->GetFormationEntry()->MovementType))
-{
-    Initialize();
-}
-
-FormationData::FormationData(CreatureGroup* gData, FormationEntrySPtr fEntry) :
-    m_groupData(gData), m_fEntry(fEntry), m_currentFormationShape(fEntry->Type),
-    m_mirrorState(false), m_keepCompact(false), m_lastWP(0), m_wpPathId(0),
-    m_masterMotionType(static_cast<MovementGeneratorType>(fEntry->MovementType))
-{
-    Initialize();
-}
-
-FormationData::~FormationData()
-{
-    sLog.outDebug("Deleting formation (%u)!!!!!", m_groupData->GetGroupEntry().Id);
-}
-
-void FormationData::Initialize()
+FormationData::FormationData(CreatureGroup* gData, FormationEntrySPtr fEntry /*= nullptr*/) :
+    m_groupData(gData), m_mirrorState(false), m_keepCompact(false), m_lastWP(0), m_wpPathId(0)
 {
     for (auto const& sData : m_groupData->GetGroupEntry().DbGuids)
     {
@@ -372,19 +351,34 @@ void FormationData::Initialize()
             m_realMasterDBGuid = sData.DbGuid;
     }
 
+    if (fEntry)
+    {
+        m_fEntry = fEntry;
+        m_masterMotionType = static_cast<MovementGeneratorType>(fEntry->MovementType);
+    }
+    else
+    {
+        m_fEntry = m_groupData->GetFormationEntry();
+        // temp hack until movetype is set correctly
+        auto cData = sObjectMgr.GetCreatureData(m_realMasterDBGuid);
+        if (cData)
+            m_masterMotionType = static_cast<MovementGeneratorType>(cData->movementType);
+        else
+            m_masterMotionType = IDLE_MOTION_TYPE;
+    }
+
     // provided slot id should be ordered with no gap!
     m_slotGuid = m_slotsMap.size();
 
     if ((m_fEntry->Options & static_cast<uint32>(SPAWN_GROUP_FORMATION_OPTION_KEEP_CONPACT)) != 0)
         m_keepCompact = true;
 
-    if (m_groupData->GetFormationEntry())
-    {
-        // temp hack until movetype is set correctly
-        auto cData = sObjectMgr.GetCreatureData(m_realMasterDBGuid);
-        if (cData)
-            m_masterMotionType = static_cast<MovementGeneratorType>(cData->movementType);
-    }
+    m_currentFormationShape = m_fEntry->Type;
+}
+
+FormationData::~FormationData()
+{
+    sLog.outDebug("Deleting formation (%u)!!!!!", m_groupData->GetGroupEntry().Id);
 }
 
 bool FormationData::SetFollowersMaster()
