@@ -2348,12 +2348,12 @@ bool ChatHandler::HandleNpcGroupInfoCommand(char* /*args*/)
         if (master == creature)
             SendSysMessage("Creature is formation leader");
         else if (creature->GetFormationSlot())
-            PSendSysMessage("Creature is in formation slot");
+            SendSysMessage("Creature is in formation slot");
         else
             SendSysMessage("Error: unable to retrieve the slot of the creature.");
     }
 
-    SendSysMessage(gData->to_string().c_str());
+    PSendSysMessage("%s", gData->to_string().c_str());
     return true;
 }
 
@@ -2407,7 +2407,7 @@ bool ChatHandler::HandleNpcFormationInfoCommand(char* /*args*/)
         return true;
     }
 
-    SendSysMessage(currSlot->GetFormationData()->to_string().c_str());
+    PSendSysMessage("%s", currSlot->GetFormationData()->to_string().c_str());
     return true;
 }
 
@@ -2433,7 +2433,7 @@ bool ChatHandler::HandleNpcFormationResetCommand(char* /*args*/)
     currSlot->GetFormationData()->Reset();
 
     // need implementation
-    PSendSysMessage("Formation is reset to default!");
+    SendSysMessage("Formation is reset to default!");
     return true;
 }
 

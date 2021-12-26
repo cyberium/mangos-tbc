@@ -1133,8 +1133,8 @@ void ObjectMgr::LoadSpawnGroups()
             fEntry->Options = fields[4].GetUInt32();
             fEntry->Comment = fields[5].GetCppString();
 
-            auto gItr = newContainer->spawnGroupMap.find(fEntry->GroupId);
-            if (gItr == newContainer->spawnGroupMap.end())
+            auto itr = newContainer->spawnGroupMap.find(fEntry->GroupId);
+            if (itr == newContainer->spawnGroupMap.end())
             {
                 sLog.outErrorDb("LoadSpawnGroups: Invalid group Id:%u found in `spawn_group_formation`. Skipping.", fEntry->GroupId);
                 continue;
@@ -1165,7 +1165,7 @@ void ObjectMgr::LoadSpawnGroups()
                 continue;
             }
 
-            gItr->second.formationEntry = std::move(fEntry);
+            itr->second.formationEntry = std::move(fEntry);
         } while (result->NextRow());
     }
 

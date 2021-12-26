@@ -448,7 +448,7 @@ struct ScriptInfo
             uint32 empty2;                                  // datalong2
         } logKill;
 
-        struct                                              // SCRIPT_COMMAND_MOVE_DYNAMIC (37)
+        struct                                              // SCRIPT_COMMAND_SPAWN_GROUP (60)
         {
             uint32 command;                                 // datalong
             uint32 data1;                                   // datalong2
