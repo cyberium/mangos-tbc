@@ -805,7 +805,7 @@ void ScriptMgr::LoadScripts(ScriptMapMapName& scripts, const char* tablename)
                         break;
                     }
 
-                    case 4: // Add buddy to formation
+                    case 4: // remove buddy to formation
                     {
                         if (!tmp.buddyEntry)
                         {
@@ -822,6 +822,21 @@ void ScriptMgr::LoadScripts(ScriptMapMapName& scripts, const char* tablename)
                             sLog.outErrorDb("Table `%s` uses invalid formation shape id(%u) for script id %u.", tablename, tmp.formationData.data1, tmp.id);
                             continue;
                         }
+                        break;
+                    }
+
+                    case 6: // change formation spread
+                    {
+                        if (tmp.x < 0.5f || tmp.x > 15.0f)
+                        {
+                            sLog.outErrorDb("Table `%s` uses invalid formation spread(%f) should be in 0.5 .. 15 range for script id %u.", tablename, tmp.x, tmp.id);
+                            continue;
+                        }
+                        break;
+                    }
+
+                    case 7: // change formation options
+                    {
                         break;
                     }
 
@@ -2698,12 +2713,6 @@ bool ScriptAction::ExecuteDbscriptCommand(WorldObject* pSource, WorldObject* pTa
             Creature* leader = static_cast<Creature*>(pTarget);
 
             auto groupData = leader->GetCreatureGroup();
-//             if (!groupData)
-//             {
-//                 sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed. %s in not in creature group!", m_table, m_script->id, m_script->command, leader->GetGuidStr().c_str());
-//                 break;
-//             }
-
             auto currSlot = leader->GetFormationSlot();
             FormationData* formationData = nullptr;
             if (currSlot)
@@ -2711,52 +2720,6 @@ bool ScriptAction::ExecuteDbscriptCommand(WorldObject* pSource, WorldObject* pTa
 
             switch (m_script->formationData.command)
             {
-//             case 0:                                     // mirror mode
-//             {
-//                 switch (m_script->formationData.data1)
-//                 {
-//                 case 0:
-//                     formationData->SetMirrorState(!formationData->GetMirrorState());
-//                     break;
-//                 case 1:
-//                     formationData->SetMirrorState(true);
-//                     break;
-//                 case  2:
-//                     formationData->SetMirrorState(false);
-//                     break;
-//                 default:
-//                     sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed. Invalid value for datalong!", m_table, m_script->id, m_script->command, m_script->formationData.data1);
-//                     break;
-//                 }
-//                 break;
-//             }
-
-//             case 1:                                     // set specific template
-//             {
-//                 if (m_script->formationData.data1 < MAX_GROUP_FORMATION_TYPE)
-//                 {
-//                     if (!currSlot->GetFormationData()->SwitchFormation(m_script->formationData.data1))
-//                         sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed.", m_table, m_script->id, m_script->command);
-//                 }
-//                 else
-//                 {
-//                     sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed. Formation id(%u) is not correct.", m_table, m_script->id, m_script->command, m_script->formationData.data1);
-//                     return true;
-//                 }
-//                 break;
-//             }
-
-//             case 2:                                     // disband formation
-//             {
-//                 formationData->ClearMoveGen();
-//                 break;
-//             }
-
-//             case 3:                                     // Reset formation members
-//             {
-//                 formationData->Reset();
-//                 break;
-//             }
             case 2:                         // set formation
             {
                 if (LogIfNotCreature(pSource))
@@ -2804,62 +2767,102 @@ bool ScriptAction::ExecuteDbscriptCommand(WorldObject* pSource, WorldObject* pTa
                 grpData->SetFormationData(fEntry);
                 break;
             }
-            case 3:
+            case 3: // add creature to the formation
             {
                 if (LogIfNotCreature(pSource))
                     return false;
 
                 if (!formationData)
                 {
-                    sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed. %s in not in formation!", m_table, m_script->id, m_script->command, leader->GetGuidStr().c_str());
+                    sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed. %s is not in formation!",
+                        m_table, m_script->id, m_script->command, leader->GetGuidStr().c_str());
                     break;
                 }
                 formationData->Add(static_cast<Creature*>(pSource));
                 break;
             }
-            case 4:
+            case 4: // remove creature from the formation
             {
                 if (LogIfNotCreature(pSource))
                     return false;
 
                 if (!formationData)
                 {
-                    sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed. %s in not in formation!", m_table, m_script->id, m_script->command, leader->GetGuidStr().c_str());
+                    sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed. %s is not in formation!",
+                        m_table, m_script->id, m_script->command, leader->GetGuidStr().c_str());
                     break;
                 }
                 formationData->Remove(static_cast<Creature*>(pSource));
                 break;
             }
-            case 5:
+            case 5: // switch formation shape
             {
                 if (!formationData)
                 {
-                    sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed. %s in not in formation!", m_table, m_script->id, m_script->command, leader->GetGuidStr().c_str());
+                    sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed. %s is not in formation!",
+                        m_table, m_script->id, m_script->command, leader->GetGuidStr().c_str());
                     break;
                 }
 
                 if (m_script->formationData.data1 < static_cast<uint32>(SpawnGroupFormationType::SPAWN_GROUP_FORMATION_TYPE_COUNT))
                 {
                     if (!formationData->SwitchFormation(static_cast<SpawnGroupFormationType>(m_script->formationData.data1)))
-                        sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed.", m_table, m_script->id, m_script->command);
+                        sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u subcommand changeShape(%u) failed.",
+                            m_table, m_script->id, m_script->command, m_script->formationData.command);
                 }
                 else
                 {
-                    sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed. Formation id(%u) is not correct.", m_table, m_script->id, m_script->command, m_script->formationData.data1);
+                    sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u subcommand switchShape(%u) failed, wrong shape id(%u).",
+                        m_table, m_script->id, m_script->command, m_script->formationData.command, m_script->formationData.data1);
                     return true;
                 }
                 break;
             }
+            case 6:  // set formation spread
+            {
+                if (!formationData)
+                {
+                    sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed. %s is not in formation!",
+                        m_table, m_script->id, m_script->command, leader->GetGuidStr().c_str());
+                    break;
+                }
+
+                if (m_script->x <= 15)
+                {
+                    formationData->SetSpread(m_script->x);
+                }
+                else
+                {
+                    sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u subcommand changeSpread(%u) failed, wrong shape id(%f).",
+                        m_table, m_script->id, m_script->command, m_script->formationData.command, m_script->x);
+                    return true;
+                }
+                break;
+            }
+            case 7:  // set formation options
+            {
+                if (!formationData)
+                {
+                    sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed. %s is not in formation!",
+                        m_table, m_script->id, m_script->command, leader->GetGuidStr().c_str());
+                    break;
+                }
+
+                formationData->SetOptions(m_script->formationData.data1);
+                break;
+            }
 
             default:
-                sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed. Invalid value for formation command!", m_table, m_script->id, m_script->command, m_script->formationData.command);
+                sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u failed. Invalid value for formation command!",
+                    m_table, m_script->id, m_script->command, m_script->formationData.command);
                 break;
             }
 
             break;
         }
         default:
-            sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u unknown command used.", m_table, m_script->id, m_script->command);
+            sLog.outErrorDb(" DB-SCRIPTS: Process table `%s` id %u, command %u unknown command used.",
+                m_table, m_script->id, m_script->command);
             break;
     }
 

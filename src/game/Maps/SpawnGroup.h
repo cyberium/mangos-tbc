@@ -167,6 +167,8 @@ class FormationData
         void OnDelete(Creature* creature);
         void Compact(bool set = true);
         bool SwitchFormation(SpawnGroupFormationType newShape);
+        void SetSpread(float spread) { m_currentSpread = spread; FixSlotsPositions(); }
+        void SetOptions(uint32 options);
 
         FormationSlotDataSPtr SetFormationSlot(Creature* creature, SpawnGroupFormationSlotType slotType = SPAWN_GROUP_FORMATION_SLOT_TYPE_STATIC);
         std::string to_string() const;
@@ -184,6 +186,8 @@ class FormationData
         void ClearMoveGen();
         bool FreeSlot(FormationSlotDataSPtr slot);
         bool AddInFormationSlot(Unit* newUnit, SpawnGroupFormationSlotType slotType = SPAWN_GROUP_FORMATION_SLOT_TYPE_STATIC);
+        bool HaveOption(SpawGroupFormationOptions const& option, uint32 const& options) const { return (static_cast<uint32>(options) & option) != 0; }
+        bool HaveOption(SpawGroupFormationOptions const& option) const { return (static_cast<uint32>(m_currentOptions) & option) != 0; }
 
         CreatureGroup* m_groupData;
         FormationEntrySPtr m_fEntry;
@@ -193,12 +197,14 @@ class FormationData
         RespawnPosistion m_spawnPos;
 
         bool m_mirrorState;
-        bool m_keepCompact;
 
         uint32 m_realMasterDBGuid;
         uint32 m_slotGuid;
         uint32 m_lastWP;
         uint32 m_wpPathId;
+        uint32 m_currentOptions;
+
+        float m_currentSpread;
 };
 
 #endif

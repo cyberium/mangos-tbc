@@ -340,7 +340,7 @@ void GameObjectGroup::RemoveObject(WorldObject* wo)
 ////////////////////
 
 FormationData::FormationData(CreatureGroup* gData, FormationEntrySPtr fEntry /*= nullptr*/) :
-    m_groupData(gData), m_mirrorState(false), m_keepCompact(false), m_lastWP(0), m_wpPathId(0)
+    m_groupData(gData), m_mirrorState(false), m_lastWP(0), m_wpPathId(0)
 {
     for (auto const& sData : m_groupData->GetGroupEntry().DbGuids)
     {
@@ -370,10 +370,10 @@ FormationData::FormationData(CreatureGroup* gData, FormationEntrySPtr fEntry /*=
     // provided slot id should be ordered with no gap!
     m_slotGuid = m_slotsMap.size();
 
-    if ((m_fEntry->Options & static_cast<uint32>(SPAWN_GROUP_FORMATION_OPTION_KEEP_CONPACT)) != 0)
-        m_keepCompact = true;
-
+    // set current value from their defaults
     m_currentFormationShape = m_fEntry->Type;
+    m_currentSpread = m_fEntry->Spread;
+    m_currentOptions = m_fEntry->Options;
 }
 
 FormationData::~FormationData()
@@ -433,6 +433,16 @@ bool FormationData::SwitchFormation(SpawnGroupFormationType newShape)
 
     FixSlotsPositions();
     return true;
+}
+
+void FormationData::SetOptions(uint32 options)
+{
+    if (HaveOption(SPAWN_GROUP_FORMATION_OPTION_KEEP_CONPACT, m_currentOptions) != HaveOption(SPAWN_GROUP_FORMATION_OPTION_KEEP_CONPACT, options))
+    {
+        FixSlotsPositions();
+    }
+
+    m_currentOptions = options;
 }
 
 // remove all creatures from formation data
@@ -644,7 +654,7 @@ void FormationData::OnDeath(Creature* creature)
 
     if (formationMaster)
         TrySetNewMaster();
-    else if(m_keepCompact)
+    else if(HaveOption(SPAWN_GROUP_FORMATION_OPTION_KEEP_CONPACT))
         FixSlotsPositions();
 }
 
@@ -767,7 +777,11 @@ bool FormationData::AddInFormationSlot(Unit* newUnit, SpawnGroupFormationSlotTyp
 
 void FormationData::Compact(bool set /*= true*/)
 {
-    m_keepCompact = set;
+    if (set)
+        m_currentOptions = m_currentOptions | static_cast<uint32>(SPAWN_GROUP_FORMATION_OPTION_KEEP_CONPACT);
+    else
+        m_currentOptions = m_currentOptions & ~(static_cast<uint32>(SPAWN_GROUP_FORMATION_OPTION_KEEP_CONPACT));
+
     FixSlotsPositions();
 }
 
@@ -887,7 +901,7 @@ void FormationData::Remove(Creature* creature)
 
     if (slot->IsRemovable())
         m_slotsMap.erase(slot->GetSlotId());
-    if (m_keepCompact)
+    if (HaveOption(SPAWN_GROUP_FORMATION_OPTION_KEEP_CONPACT))
         FixSlotsPositions();
 }
 
@@ -941,7 +955,7 @@ void FormationData::Remove(Player* player)
     player->SetFormationSlot(nullptr);
     player->GetMotionMaster()->Initialize();
 
-    if (m_keepCompact)
+    if (HaveOption(SPAWN_GROUP_FORMATION_OPTION_KEEP_CONPACT))
         FixSlotsPositions();
 }
 
@@ -1024,10 +1038,10 @@ std::string FormationData::to_string() const
 
     std::string fType = FormationType[static_cast<uint32>(m_currentFormationShape)];
     std::string fMoveType = GetMoveTypeStr(m_masterMotionType);
-    std::string fOptions = m_keepCompact ? ", keepCompact" : "no options";
+    std::string fOptions = (HaveOption(SPAWN_GROUP_FORMATION_OPTION_KEEP_CONPACT)) ? ", keepCompact" : "no options";
     result << "Formation group id: " << m_fEntry->GroupId    << "\n";
     result << "Shape: "              << fType                << "\n";
-    result << "Spread: "             << m_fEntry->Spread     << "\n";
+    result << "Spread: "             << m_currentSpread      << "\n";
     result << "MovementType: "       << fMoveType            << "\n";
     result << "MovementId: "         << m_fEntry->MovementID << "\n";
     result << "Options: "            << fOptions             << "\n";
@@ -1049,10 +1063,10 @@ std::string FormationData::to_string() const
 
 void FormationData::FixSlotsPositions()
 {
-    float defaultDist = m_fEntry->Spread;
+    float defaultDist = m_currentSpread;
     auto& slots = m_slotsMap;
     float totalMembers = 0;
-    bool onlyAlive = m_keepCompact;
+    bool onlyAlive = HaveOption(SPAWN_GROUP_FORMATION_OPTION_KEEP_CONPACT);
 
     if (onlyAlive)
     {
