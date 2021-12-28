@@ -1150,72 +1150,6 @@ bool FormationMovementGenerator::Update(Unit& unit, const uint32& diff)
     return TargetedMovementGeneratorMedium::Update(unit, diff);
 }
 
-bool FormationMovementGenerator::GetPointAround(G3D::Vector3 const& originalPoint, G3D::Vector3& foundPos, float angle, float distance, bool isOnTheGround)
-{
-    uint32 posCount = 0;
-    // define an angle of 45deg from original point to get valid z from terrain
-    // its maybe a bit too much
-    float zTolerance = distance / 1.5f;
-
-    bool done = false;
-    do
-    {
-        foundPos = originalPoint;
-        angle = angle + ((M_PI_F / 4.0f) * posCount);
-        angle = (angle >= 0) ? angle : 2 * M_PI_F + angle;
-
-        // fix point position to desired location around the leader
-        float dx = cos(angle) * (distance);
-        float dy = sin(angle) * (distance);
-        foundPos.x += dx;
-        foundPos.y += dy;
-
-        if (isOnTheGround)
-        {
-            // make it stick to the ground as well as possible
-            float newZ = i_target->GetMap()->GetHeight(foundPos.x, foundPos.y, foundPos.z + 2.0f);
-            if (std::abs(newZ - foundPos.z) < zTolerance)
-                foundPos.z = newZ + 0.2f;
-            else
-                sLog.outString("Too big!! max:%5.2f dist:%5.2f", zTolerance, std::abs(newZ - foundPos.z));
-        }
-        if (i_target->IsWithinLOS(foundPos.x, foundPos.y, foundPos.z + 0.5f))
-            done = true;
-        else
-            ++posCount;
-
-    } while (!done && posCount < 8);
-
-    return done;
-}
-
-bool FormationMovementGenerator::BuildReplacementPath(Unit& owner, PointsArray& path)
-{
-    sLog.outString("Build replacement Path!!");
-    auto const& masterSpline = i_target->movespline;
-    Vector3 masterPos(i_target->GetPositionX(), i_target->GetPositionY(), i_target->GetPositionZ());
-
-    bool isOnGround = !owner.IsFlying() && !owner.IsInWater() && !owner.HasHoverAura();
-
-    path.emplace_back(owner.GetPositionX(), owner.GetPositionY(), owner.GetPositionZ());
-
-    Vector3 nextPos;
-    bool done = false;
-    uint32 posCount = 0;
-    float slotAngle = m_slot->GetAngle();
-    float slotDist = m_slot->GetDistance();
-    float angle = i_target->GetOrientation() + slotAngle;
-
-    done = GetPointAround(masterPos, nextPos, angle, slotDist, isOnGround);
-    if (done)
-    {
-        path.push_back(nextPos);
-    }
-
-    return done;
-}
-
-
 float FormationMovementGenerator::BuildPath(Unit& owner, PointsArray& path)
 {
     float speed = -1.0f;
@@ -1229,20 +1163,18 @@ float FormationMovementGenerator::BuildPath(Unit& owner, PointsArray& path)
     if (masterSpline->Finalized())
     {
         Vector3 masterPos(i_target->GetPositionX(), i_target->GetPositionY(), i_target->GetPositionZ());
-        Vector3 nextPos;
         bool done = false;
         angle += slotAngle;
-        done = GetPointAround(masterPos, nextPos, angle, slotDist, isOnGround);
+        Position bestPos(masterPos.x, masterPos.y, masterPos.z, 0);
+        i_target->MovePositionToFirstCollision(bestPos, slotDist, angle);
+        Vector3 nextPos(bestPos.x, bestPos.y, bestPos.z);
 
-        if (done)
+        float lenght = (masterPos - nextPos).magnitude();
+        if (lenght > 0.1f)
         {
-            float lenght = (masterPos - nextPos).length();
-            if (lenght > 0.1f)
-            {
-                path.emplace_back(owner.GetPositionX(), owner.GetPositionY(), owner.GetPositionZ());
-                path.push_back(nextPos);
-                speed = owner.GetSpeed(MOVE_WALK);
-            }
+            path.emplace_back(owner.GetPositionX(), owner.GetPositionY(), owner.GetPositionZ());
+            path.push_back(nextPos);
+            speed = owner.GetSpeed(MOVE_WALK);
         }
     }
     else
@@ -1277,31 +1209,35 @@ float FormationMovementGenerator::BuildPath(Unit& owner, PointsArray& path)
             Vector3 direction = nextMasterDest - masterPrevPoint;
             angle = atan2(direction.y, direction.x) + slotAngle;
 
-            Vector3 nextPos;
-            bool done = GetPointAround(nextMasterDest, nextPos, angle, slotDist, isOnGround);
-            if (done)
+            // get best possible point near the slot position
+            Position bestPos(nextMasterDest.x, nextMasterDest.y, nextMasterDest.z, 0);
+            i_target->MovePositionToFirstCollision(bestPos, slotDist, angle);
+            Vector3 nextPos(bestPos.x, bestPos.y, bestPos.z);
+
+            // compute travel time and slave dist
+            Vector3& prevSlavePos = path[path.size() - 1];
+            pathLen = (prevSlavePos - nextPos).length();
+            if (pathLen > 0.5f)
             {
-                Vector3& prevSlavePos = path[path.size() - 1];
-                pathLen = (prevSlavePos - nextPos).length();
-                if (pathLen > 0.5f)
-                {
-                    // compute lenght
-                    slaveTravelDistance += pathLen;
+                // compute lenght
+                slaveTravelDistance += pathLen;
 
-                    // compute time (adjust with previously computed factor)
-                    int32 nextPointTime = masterSpline->ComputeTimeToIndex(pathIdx) - masterTravelTime;
-                    masterTravelTime = masterTravelTime + (nextPointTime * pathFactor);
+                // compute time (adjust with previously computed factor)
+                int32 nextPointTime = masterSpline->ComputeTimeToIndex(pathIdx) - masterTravelTime;
+                masterTravelTime = masterTravelTime + (nextPointTime * pathFactor);
 
-                    // time and lenght are added properly we can then push the next position for the follower
-                    path.push_back(nextPos);
-                }
+                // time and lenght are added properly we can then push the next position for the follower
+                path.push_back(nextPos);
             }
 
+            // distance to travel is good enough the last yard will be handled in next update
             if (slaveTravelDistance > distGood)
                 break;
+
             masterPrevPoint = nextMasterDest;
         }
 
+        // compute slave speed
         if (slaveTravelDistance > 0.1f)
         {
             // Speed computation
@@ -1332,8 +1268,6 @@ void FormationMovementGenerator::HandleTargetedMovement(Unit& owner, const uint3
     bool targetOrientation = false;
     bool needToRePos = false;
 
-    uint32 lowGuid = owner.GetGUIDLow();
-
     if (m_targetMoving && (!targetMovingLast || owner.movespline->Finalized()))  // Movement just started or master is moving and not owner: force update
         targetRelocation = true;
     else                                            // Periodic dist poll: fast when moving, slow when stationary
@@ -1354,9 +1288,11 @@ void FormationMovementGenerator::HandleTargetedMovement(Unit& owner, const uint3
         }
     }
 
-    if (m_slot->GetRecomputePosition() && i_target->movespline->Finalized())
+    if (m_slot->GetRecomputePosition())
     {
-        needToRePos = true;
+        if (i_target->movespline->Finalized() || !targetRelocation)
+            needToRePos = true;
+        
         m_slot->GetRecomputePosition() = false;
     }
 
@@ -1383,18 +1319,10 @@ void FormationMovementGenerator::_setLocation(Unit& owner, bool needRepos)
 {
     PointsArray newPath;
     float speed = -1.f;
-    if (needRepos && i_target->movespline->Finalized()) //need to repos
-    {
-        if (!BuildReplacementPath(owner, newPath))
-            return;
-    }
-    else
-    {
-        speed = BuildPath(owner, newPath);
+    speed = BuildPath(owner, newPath);
 
-        if (speed < 1.0f)
-            return;
-    }
+    if (speed < 1.0f)
+        return;
 
     _addUnitStateMove(owner);
 

@@ -247,28 +247,26 @@ class FollowMovementGenerator : public TargetedMovementGeneratorMedium<Unit, Fol
 
 class FormationMovementGenerator : public FollowMovementGenerator
 {
-public:
-    FormationMovementGenerator(FormationSlotDataSPtr& sData, bool main) :
-        FollowMovementGenerator(*sData->GetMaster(), sData->GetDistance(), sData->GetDistance(), main, false, false),
-        m_slot(sData)
-    {
-    }
-    ~FormationMovementGenerator();
+    public:
+        FormationMovementGenerator(FormationSlotDataSPtr& sData, bool main) :
+            FollowMovementGenerator(*sData->GetMaster(), sData->GetDistance(), sData->GetDistance(), main, false, false),
+            m_slot(sData)
+        {
+        }
+        ~FormationMovementGenerator();
 
-    MovementGeneratorType GetMovementGeneratorType() const override { return FORMATION_MOTION_TYPE; }
+        MovementGeneratorType GetMovementGeneratorType() const override { return FORMATION_MOTION_TYPE; }
 
-    virtual bool Update(Unit&, const uint32&) override;
+        virtual bool Update(Unit&, const uint32&) override;
 
-protected:
-    bool BuildReplacementPath(Unit& owner, PointsArray& path);
-    void HandleTargetedMovement(Unit& owner, const uint32& time_diff) override;
-    void HandleFinalizedMovement(Unit& owner) override;
+    protected:
+        void HandleTargetedMovement(Unit& owner, const uint32& time_diff) override;
+        void HandleFinalizedMovement(Unit& owner) override;
 
-private:
-    virtual void _setLocation(Unit& owner, bool catchup) override;
-    bool GetPointAround(G3D::Vector3 const& originalPoint, G3D::Vector3& foundPos, float angle, float distance, bool isOnTheGround);
-    float BuildPath(Unit& owner, PointsArray& path);
-    FormationSlotDataSPtr m_slot;
+    private:
+        virtual void _setLocation(Unit& owner, bool catchup) override;
+        float BuildPath(Unit& owner, PointsArray& path);
+        FormationSlotDataSPtr m_slot;
 };
 
 #endif
