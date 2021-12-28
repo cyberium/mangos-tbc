@@ -1015,7 +1015,13 @@ FormationSlotDataSPtr FormationData::SetFormationSlot(Creature* creature, SpawnG
     if (GetMaster())
     {
         if (slot->GetSlotId() == 0)
+        {
+            // spawned/respawned master
             SetMasterMovement();
+
+            // reset formation shape as it will restart from node 0 in respawn case
+            SwitchFormation(m_fEntry->Type);
+        }
         FixSlotsPositions();
         SetFollowersMaster();
     }

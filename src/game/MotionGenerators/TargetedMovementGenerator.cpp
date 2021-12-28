@@ -1140,12 +1140,13 @@ FormationMovementGenerator::~FormationMovementGenerator()
 
 bool FormationMovementGenerator::Update(Unit& unit, const uint32& diff)
 {
-    if (!i_target.isValid() || !m_slot->GetMaster())
+    Unit* master = m_slot->GetMaster();
+    if (!i_target.isValid() || !master)
         return false;
 
     // handle master change
-    if (i_target.getTarget() != m_slot->GetMaster())
-        SetNewTarget(*m_slot->GetMaster());
+    if (i_target.getTarget() != master)
+        SetNewTarget(*master);
 
     return TargetedMovementGeneratorMedium::Update(unit, diff);
 }
@@ -1258,8 +1259,57 @@ float FormationMovementGenerator::BuildPath(Unit& owner, PointsArray& path)
     return speed;
 }
 
+// return true if follower is far from master and heading to it
+bool FormationMovementGenerator::HandleMasterDistanceCheck(Unit& owner, const uint32& time_diff)
+{
+    Unit* master = m_slot->GetMaster();
+    if (!m_headingToMaster || i_recheckDistance.Passed())
+    {
+        float distToMaster = owner.GetDistance(master);
+        if (distToMaster > 200)
+        {
+            Position const& mPos = master->GetPosition();
+            owner.NearTeleportTo(mPos.x, mPos.y, mPos.z, mPos.o);
+
+            m_slot->GetRecomputePosition() = true;
+            sLog.outString("BIG TELEPORT TO MASTER!!");
+            return true;
+        }
+        else if (distToMaster > 20)
+        {
+            Position const& mPos = master->GetPosition();
+            _addUnitStateMove(owner);
+
+            Movement::MoveSplineInit init(owner);
+            init.MoveTo(mPos.x, mPos.y, mPos.z, true, true);
+            init.SetFacing(mPos.o);
+
+            init.SetWalk(false);
+            //init.SetVelocity(0);
+
+            i_recheckDistance.Reset(init.Launch() / 2);
+            m_headingToMaster = true;
+            sLog.outString("MOVE BACK FOLLOWER TO MASTER!!");
+            return true;
+        }
+        else
+        {
+            m_headingToMaster = false;
+        }
+    }
+    else
+    {
+        i_recheckDistance.Update(time_diff);
+        return true;
+    }
+    return false;
+}
+
 void FormationMovementGenerator::HandleTargetedMovement(Unit& owner, const uint32& time_diff)
 {
+    if (HandleMasterDistanceCheck(owner, time_diff))
+        return;
+
     // Detect target movement and relocation
     const bool targetMovingLast = m_targetMoving;
     // If moving in any direction (not count jumping in place)

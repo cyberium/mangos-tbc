@@ -250,7 +250,7 @@ class FormationMovementGenerator : public FollowMovementGenerator
     public:
         FormationMovementGenerator(FormationSlotDataSPtr& sData, bool main) :
             FollowMovementGenerator(*sData->GetMaster(), sData->GetDistance(), sData->GetDistance(), main, false, false),
-            m_slot(sData)
+            m_slot(sData), m_headingToMaster(false)
         {
         }
         ~FormationMovementGenerator();
@@ -266,7 +266,9 @@ class FormationMovementGenerator : public FollowMovementGenerator
     private:
         virtual void _setLocation(Unit& owner, bool catchup) override;
         float BuildPath(Unit& owner, PointsArray& path);
+        bool HandleMasterDistanceCheck(Unit& owner, const uint32& time_diff);
         FormationSlotDataSPtr m_slot;
+        bool m_headingToMaster;
 };
 
 #endif
