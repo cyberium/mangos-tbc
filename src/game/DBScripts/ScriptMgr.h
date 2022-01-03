@@ -131,9 +131,8 @@ enum ScriptCommand                                          // resSource, resTar
     // datalong=UnitFlags
     // datalong2:0x00=add, 0x01=remove, 0x02=toggle
     SCRIPT_COMMAND_SET_DATA_64              = 49,           // datalong = set data param 1, datalong2 = set data param 2
-    SCRIPT_COMMAND_ZONE_PULSE               = 50,           // 
-
-    SCRIPT_COMMAND_SPAWN_GROUP              = 60,
+    SCRIPT_COMMAND_ZONE_PULSE               = 50,           //
+    SCRIPT_COMMAND_SPAWN_GROUP              = 51,           // dalalong = command
 };
 
 #define MAX_TEXT_ID 4                                       // used for SCRIPT_COMMAND_TALK, SCRIPT_COMMAND_EMOTE, SCRIPT_COMMAND_CAST_SPELL, SCRIPT_COMMAND_TERMINATE_SCRIPT
