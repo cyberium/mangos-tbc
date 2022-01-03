@@ -1605,22 +1605,14 @@ bool ScriptAction::ExecuteDbscriptCommand(WorldObject* pSource, WorldObject* pTa
 
             if (m_script->textId[0])
             {
-                if (m_script->textId[0] == 1)
+                if (m_script->textId[0] == 1 || m_script->textId[0] == 2 && !creature->GetCreatureGroup())
                 {
                     Position const& respPos = creature->GetRespawnPosition();
                     creature->GetMotionMaster()->MovePoint(0, respPos, ForcedMovement(m_script->moveTo.forcedMovement), 0.f, true);
                 }
                 else if (m_script->textId[0] == 2)
                 {
-                    if (creature->GetCreatureGroup())
-                    {
-                        creature->GetCreatureGroup()->MoveHome();
-                    }
-                    else
-                    {
-                        auto respPos = creature->GetRespawnPosition();
-                        creature->GetMotionMaster()->MovePoint(0, respPos, ForcedMovement(m_script->moveTo.forcedMovement), 0.f, true);
-                    }
+                    creature->GetCreatureGroup()->MoveHome();
                 }
                 break;
             }
