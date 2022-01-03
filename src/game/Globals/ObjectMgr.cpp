@@ -1117,7 +1117,7 @@ void ObjectMgr::LoadSpawnGroups()
         } while (result->NextRow());
     }
 
-    result.reset(WorldDatabase.Query("SELECT SpawnGroupID, FormationType, MovementID, FormationSpread, FormationOptions, Comment FROM spawn_group_formation"));
+    result.reset(WorldDatabase.Query("SELECT SpawnGroupID, FormationType, FormationSpread, FormationOptions, MovementID, MovementType, Comment FROM spawn_group_formation"));
     if (result)
     {
         do
@@ -1127,11 +1127,11 @@ void ObjectMgr::LoadSpawnGroups()
             FormationEntrySPtr fEntry = std::make_shared<FormationEntry>();
             fEntry->GroupId = fields[0].GetUInt32();
             uint32 fType = fields[1].GetUInt32();
-            fEntry->MovementID = fields[2].GetUInt32();
-            fEntry->MovementType = WAYPOINT_MOTION_TYPE;
-            fEntry->Spread = fields[3].GetFloat();
-            fEntry->Options = fields[4].GetUInt32();
-            fEntry->Comment = fields[5].GetCppString();
+            fEntry->Spread = fields[2].GetFloat();
+            fEntry->Options = fields[3].GetUInt32();
+            fEntry->MovementID = fields[4].GetUInt32();
+            fEntry->MovementType = fields[5].GetUInt32();
+            fEntry->Comment = fields[6].GetCppString();
 
             auto itr = newContainer->spawnGroupMap.find(fEntry->GroupId);
             if (itr == newContainer->spawnGroupMap.end())
@@ -1143,6 +1143,12 @@ void ObjectMgr::LoadSpawnGroups()
             if (fType >= static_cast<uint32>(SPAWN_GROUP_FORMATION_TYPE_COUNT))
             {
                 sLog.outErrorDb("LoadSpawnGroups: Invalid formation type in `spawn_group_formation` ID:%u. Skipping.", fEntry->GroupId);
+                continue;
+            }
+
+            if (fEntry->MovementType >= static_cast<uint32>(MAX_DB_MOTION_TYPE))
+            {
+                sLog.outErrorDb("LoadSpawnGroups: Invalid movement type in `spawn_group_formation` ID:%u. Skipping.", fEntry->GroupId);
                 continue;
             }
 
