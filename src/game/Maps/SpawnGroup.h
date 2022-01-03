@@ -151,7 +151,7 @@ class FormationSlotData
 class FormationData
 {
     public:
-        FormationData(CreatureGroup* gData, FormationEntrySPtr fEntry = nullptr);
+        FormationData(CreatureGroup* gData, FormationEntrySPtr fEntry);
         FormationData() = delete;
         ~FormationData();
 

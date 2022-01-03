@@ -1253,7 +1253,7 @@ float FormationMovementGenerator::BuildPath(Unit& owner, PointsArray& path)
 
             // clamp the speed to some limit
             speed = std::max(0.5f, speed);
-            speed = std::min(10.0f, speed);
+            speed = std::min(masterSpeed * 2, speed);
         }
     }
     return speed;
@@ -1272,7 +1272,7 @@ bool FormationMovementGenerator::HandleMasterDistanceCheck(Unit& owner, const ui
             owner.NearTeleportTo(mPos.x, mPos.y, mPos.z, mPos.o);
 
             m_slot->GetRecomputePosition() = true;
-            sLog.outString("BIG TELEPORT TO MASTER!!");
+            //sLog.outString("BIG TELEPORT TO MASTER!!");
             return true;
         }
         else if (distToMaster > 20)
@@ -1289,7 +1289,7 @@ bool FormationMovementGenerator::HandleMasterDistanceCheck(Unit& owner, const ui
 
             i_recheckDistance.Reset(init.Launch() / 2);
             m_headingToMaster = true;
-            sLog.outString("MOVE BACK FOLLOWER TO MASTER!!");
+            //sLog.outString("MOVE BACK FOLLOWER TO MASTER!!");
             return true;
         }
         else

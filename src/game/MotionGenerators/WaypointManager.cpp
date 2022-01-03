@@ -383,16 +383,16 @@ void WaypointManager::Load()
     }
 
     // /////////////////////////////////////////////////////
-    // movement_template
+    // waypoint_path
     // /////////////////////////////////////////////////////
 
-    result = WorldDatabase.Query("SELECT entry, COUNT(point) FROM movement_template GROUP BY entry");
+    result = WorldDatabase.Query("SELECT entry, COUNT(point) FROM waypoint_path GROUP BY entry");
 
     if (!result)
     {
         BarGoLink bar(1);
         bar.step();
-        sLog.outString(">> Loaded 0 path templates. DB table `movement_template` is empty.");
+        sLog.outString(">> Loaded 0 path templates. DB table `waypoint_path` is empty.");
         sLog.outString();
     }
     else
@@ -413,7 +413,7 @@ void WaypointManager::Load()
         delete result;
 
         //                                   0      1       2      3           4           5           6            7
-        result = WorldDatabase.Query("SELECT entry, pathId, point, position_x, position_y, position_z, orientation, waittime, script_id FROM movement_template");
+        result = WorldDatabase.Query("SELECT entry, pathId, point, position_x, position_y, position_z, orientation, waittime, script_id FROM waypoint_path");
 
         BarGoLink bar(result->GetRowCount());
         std::set<uint32> blacklistWaypoints;
@@ -430,7 +430,7 @@ void WaypointManager::Load()
             if (point == 0)
             {
                 blacklistWaypoints.insert((entry << 8) + pathId);
-                sLog.outErrorDb("Table `movement_template` has invalid point 0 for entry %u in path %u. Skipping.`", entry, pathId);
+                sLog.outErrorDb("Table `waypoint_path` has invalid point 0 for entry %u in path %u. Skipping.`", entry, pathId);
             }
 
             WaypointPath& path = m_pathMovementTemplateMap[(entry << 8) + pathId];
@@ -446,20 +446,20 @@ void WaypointManager::Load()
             // prevent using invalid coordinates
             if (!MaNGOS::IsValidMapCoord(node.x, node.y, node.z, node.orientation))
             {
-                sLog.outErrorDb("Table movement_template for entry %u (point %u) are using invalid coordinates position_x: %f, position_y: %f)",
+                sLog.outErrorDb("Table waypoint_path for entry %u (point %u) are using invalid coordinates position_x: %f, position_y: %f)",
                     entry, point, node.x, node.y);
 
                 MaNGOS::NormalizeMapCoord(node.x);
                 MaNGOS::NormalizeMapCoord(node.y);
 
-                sLog.outErrorDb("Table movement_template for entry %u (point %u) are auto corrected to normalized position_x=%f, position_y=%f",
+                sLog.outErrorDb("Table waypoint_path for entry %u (point %u) are auto corrected to normalized position_x=%f, position_y=%f",
                     entry, point, node.x, node.y);
 
-                WorldDatabase.PExecute("UPDATE movement_template SET position_x = '%f', position_y = '%f' WHERE entry = %u AND point = %u AND pathId = %u", node.x, node.y, entry, point, pathId);
+                WorldDatabase.PExecute("UPDATE waypoint_path SET position_x = '%f', position_y = '%f' WHERE entry = %u AND point = %u AND pathId = %u", node.x, node.y, entry, point, pathId);
             }
 
             if (node.script_id)
-                CheckDbscript(node, entry, point, movementScriptSet, "movement_template");
+                CheckDbscript(node, entry, point, movementScriptSet, "waypoint_path");
         } while (result->NextRow());
 
         delete result;

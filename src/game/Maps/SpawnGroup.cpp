@@ -76,7 +76,7 @@ uint32 SpawnGroup::GetEligibleEntry(std::map<uint32, uint32>& existingEntries, s
         {
             if (existingEntries[explicitly->Entry] > 0)
             {
-                if (roll < explicitly->Chance)
+                if (roll < static_cast<int>(explicitly->Chance))
                     return explicitly->Entry;
 
                 roll -= int32(explicitly->Chance);
@@ -224,7 +224,7 @@ std::string SpawnGroup::to_string() const
 CreatureGroup::CreatureGroup(SpawnGroupEntry const& entry, Map& map) : SpawnGroup(entry, map, uint32(TYPEID_UNIT))
 {
     if (entry.formationEntry)
-        m_formationData = std::make_shared<FormationData>(this);
+        m_formationData = std::make_shared<FormationData>(this, entry.formationEntry);
     else
         m_formationData = nullptr;
 }
@@ -339,8 +339,8 @@ void GameObjectGroup::RemoveObject(WorldObject* wo)
 // Formation code //
 ////////////////////
 
-FormationData::FormationData(CreatureGroup* gData, FormationEntrySPtr fEntry /*= nullptr*/) :
-    m_groupData(gData), m_mirrorState(false), m_lastWP(0), m_wpPathId(0)
+FormationData::FormationData(CreatureGroup* gData, FormationEntrySPtr fEntry) :
+    m_groupData(gData), m_fEntry(fEntry), m_mirrorState(false), m_lastWP(0), m_wpPathId(0)
 {
     for (auto const& sData : m_groupData->GetGroupEntry().DbGuids)
     {
@@ -351,21 +351,7 @@ FormationData::FormationData(CreatureGroup* gData, FormationEntrySPtr fEntry /*=
             m_realMasterDBGuid = sData.DbGuid;
     }
 
-    if (fEntry)
-    {
-        m_fEntry = fEntry;
-        m_masterMotionType = static_cast<MovementGeneratorType>(fEntry->MovementType);
-    }
-    else
-    {
-        m_fEntry = m_groupData->GetFormationEntry();
-        // temp hack until movetype is set correctly
-        auto cData = sObjectMgr.GetCreatureData(m_realMasterDBGuid);
-        if (cData)
-            m_masterMotionType = static_cast<MovementGeneratorType>(cData->movementType);
-        else
-            m_masterMotionType = IDLE_MOTION_TYPE;
-    }
+    m_masterMotionType = static_cast<MovementGeneratorType>(fEntry->MovementType);
 
     // provided slot id should be ordered with no gap!
     m_slotGuid = m_slotsMap.size();
@@ -378,7 +364,7 @@ FormationData::FormationData(CreatureGroup* gData, FormationEntrySPtr fEntry /*=
 
 FormationData::~FormationData()
 {
-    sLog.outDebug("Deleting formation (%u)!!!!!", m_groupData->GetGroupEntry().Id);
+    //sLog.outDebug("Deleting formation (%u)!!!!!", m_groupData->GetGroupEntry().Id);
 }
 
 bool FormationData::SetFollowersMaster()
@@ -419,7 +405,7 @@ bool FormationData::SetFollowersMaster()
         }
     }
 
-    sLog.outString("FormationData::SetFollowersMaste> called for groupId(%u)", m_groupData->GetGroupEntry().Id);
+    //sLog.outDebug("FormationData::SetFollowersMaste> called for groupId(%u)", m_groupData->GetGroupEntry().Id);
 
     return false;
 }
@@ -639,7 +625,7 @@ void FormationData::OnDeath(Creature* creature)
     auto slot = creature->GetFormationSlot();
     if(!slot)
         return;
-    sLog.outString("Deleting %s from formation(%u)", creature->GetGuidStr().c_str(), m_groupData->GetGroupEntry().Id);
+    //sLog.outString("Deleting %s from formation(%u)", creature->GetGuidStr().c_str(), m_groupData->GetGroupEntry().Id);
 
     bool formationMaster = false;
     if (slot->IsFormationMaster())
@@ -771,7 +757,7 @@ bool FormationData::AddInFormationSlot(Unit* newUnit, SpawnGroupFormationSlotTyp
     slot->SetOwner(newUnit);
     newUnit->SetFormationSlot(slot);
 
-    sLog.outString("Slot(%u) filled by %s in formation(%u)", slot->GetSlotId(), newUnit->GetGuidStr().c_str(), m_groupData->GetGroupEntry().Id);
+    //sLog.outString("Slot(%u) filled by %s in formation(%u)", slot->GetSlotId(), newUnit->GetGuidStr().c_str(), m_groupData->GetGroupEntry().Id);
     return true;
 }
 
@@ -983,7 +969,7 @@ FormationSlotDataSPtr FormationData::SetFormationSlot(Creature* creature, SpawnG
         return nullptr;
 
     // set the creature as active to avoid some problem
-    creature->SetActiveObjectState(true);
+    //creature->SetActiveObjectState(true); // maybe not needed?
 
     auto slot = creature->GetFormationSlot();
     if (!m_realMasterDBGuid)
