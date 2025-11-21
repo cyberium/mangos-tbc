@@ -24,32 +24,41 @@ if(BUILD_EXTRACTORS AND NOT (BZip2_FOUND OR BZIP2_FOUND))
   add_subdirectory(bzip2)
 endif()
 
-# zlib
-find_package(ZLIB)
+# === zlib dependency resolution ===
+find_package(ZLIB QUIET)
 if (NOT ZLIB_FOUND OR ZLIB_VERSION_STRING VERSION_LESS 1.3.1)
+  message(VERBOSE "zlib: system version not found or too old (have: ${ZLIB_VERSION_STRING}, need ≥1.3.1) → fetching from source.")
+  include(FetchContent)
+
   FetchContent_Declare(
     zlib
     GIT_REPOSITORY "https://github.com/madler/zlib.git"
-    GIT_TAG "v1.3.1"
+    GIT_TAG 5a82f71ed1dfc0bec044d9702463dbdf84ea3b71 # v1.3.1 in develop branch from 19/02/2025
+    SYSTEM  # suppresses compiler warnings from zlib headers
   )
-  FetchContent_GetProperties(zlib)
-  if(NOT zlib_POPULATED)
-    message(STATUS "Setting up zlib ...")
-    FetchContent_MakeAvailable(zlib)
-    set(SKIP_INSTALL_ALL true)
-    set(BUILD_SHARED false)
-    # patch provided cmake to avoid unneeded target install and deprecation warning.
-    #file(COPY_FILE "patch-zlib-CMakeLists.txt" "${zlib_SOURCE_DIR}/CMakeLists.txt" ONLY_IF_DIFFERENT) #not working on cmake < 3.21 so replaced with 3 next lines
-    file(COPY "patch-zlib-CMakeLists.txt" DESTINATION "${zlib_SOURCE_DIR}")
-    file(REMOVE "${zlib_SOURCE_DIR}/CMakeLists.txt")
-    file(RENAME "${zlib_SOURCE_DIR}/patch-zlib-CMakeLists.txt" "${zlib_SOURCE_DIR}/CMakeLists.txt")
-    target_include_directories(zlib PUBLIC ${zlib_SOURCE_DIR} ${zlib_BINARY_DIR})
-    message(STATUS "zlib ${ZLIB_FULL_VERSION} successfully installed!")
-  endif()
+
+  set(SKIP_INSTALL_ALL ON CACHE INTERNAL "")
+  set(ZLIB_ENABLE_TESTS OFF CACHE INTERNAL "")
+  set(BUILD_SHARED_LIBS OFF CACHE INTERNAL "")
+  # set(ZLIB_COMPAT ON) # do we need this?
+
+  FetchContent_MakeAvailable(zlib)
+
+  get_target_property(_zlib_ver zlib VERSION)
+  message(STATUS "zlib: using built version ${_zlib_ver}")
+
 else()
-  add_library(zlib INTERFACE)
-  target_include_directories(zlib INTERFACE ${ZLIB_INCLUDE_DIRS})
-  target_link_libraries(zlib INTERFACE ${ZLIB_LIBRARIES})
+  message(STATUS "zlib: using system version ${ZLIB_VERSION_STRING}")
+
+  if(NOT TARGET zlib)
+    add_library(zlib INTERFACE IMPORTED GLOBAL)
+    if(TARGET ZLIB::ZLIB)
+      set_property(TARGET zlib PROPERTY INTERFACE_LINK_LIBRARIES ZLIB::ZLIB)
+    else()
+      set_property(TARGET zlib PROPERTY INTERFACE_LINK_LIBRARIES "${ZLIB_LIBRARIES}")
+      set_property(TARGET zlib PROPERTY INTERFACE_INCLUDE_DIRECTORIES "${ZLIB_INCLUDE_DIRS}")
+    endif()
+  endif()
 endif()
 
 if (BUILD_GAME_SERVER OR BUILD_LOGIN_SERVER)
