@@ -46,7 +46,9 @@ jobs:
         run: |
           echo "ARCHIVE_FILENAME=$env:CI_REPOSITORY_NAME-${{matrix.TYPE}}-$env:CI_SHA_SHORT.zip" >> $env:GITHUB_ENV
           cmake -E make_directory ${{ env.BUILD_DIR }}
-          choco install boost-msvc-14.3
+
+      - name: Display CMake Version
+        run: cmake --version
 
       - name: Configure
         run: cmake ${{matrix.OPTIONAL_DEFINES}} -B ${{env.BUILD_DIR}} -S ${{env.REPO_DIR}}

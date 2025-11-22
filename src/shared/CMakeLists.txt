@@ -217,7 +217,6 @@ add_library(${LIBRARY_NAME} STATIC
 
 target_include_directories(${LIBRARY_NAME}
   PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
-  PUBLIC ${Boost_INCLUDE_DIRS}
   PUBLIC ${OPENSSL_INCLUDE_DIR}
   PUBLIC ${CMAKE_BINARY_DIR}/src/shared # For the generated revision.h.
   PUBLIC "${CMAKE_SOURCE_DIR}/src/game"
@@ -225,20 +224,22 @@ target_include_directories(${LIBRARY_NAME}
 
 target_link_libraries(${LIBRARY_NAME} PUBLIC cmangos-compile-option-interface)
 
+target_link_libraries(${LIBRARY_NAME}
+  PUBLIC framework
+  PUBLIC ${OPENSSL_LIBRARIES}
+  PUBLIC utf8cpp
+  PUBLIC Boost::headers
+  PUBLIC Boost::program_options
+  PUBLIC Boost::thread
+  PUBLIC Boost::filesystem
+  PUBLIC Boost::asio
+  PUBLIC Boost::circular_buffer
+  PUBLIC Boost::date_time
+)
+
 if(UNIX)
   target_link_libraries(${LIBRARY_NAME}
-    PUBLIC framework
-    PUBLIC utf8cpp
     PUBLIC dl
-    PUBLIC ${Boost_LIBRARIES}
-    PUBLIC ${OPENSSL_LIBRARIES}
-  )
-else()
-  target_link_libraries(${LIBRARY_NAME}
-    PUBLIC framework
-    PUBLIC ${Boost_LIBRARIES}
-    PUBLIC ${OPENSSL_LIBRARIES}
-    PUBLIC utf8cpp
   )
 endif()
 

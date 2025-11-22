@@ -24,7 +24,6 @@
 #include "Util/Errors.h"
 #include "Multithreading/Threading.h"
 #include <thread>
-#include <boost/asio.hpp>
 #include "Common.h"
 #include "Log/Log.h"
 #include "Util/ByteBuffer.h"
